@@ -16,8 +16,8 @@ The change has two coupled outcomes:
 
 - An incomplete attempt does not create an Attempt, update ReviewState, or advance the learner.
 - Enter on an incomplete attempt shows an actionable notice.
-- A complete attempt that evaluates as `close` or `retry` records feedback, then Enter retries the same SentenceCard.
-- Only a `perfect` result enables the next SentenceCard.
+- A complete attempt that evaluates as `close` or `retry` records feedback, keeps matched words, clears mismatches and extras, and focuses the first cleared slot without revealing its answer.
+- A `perfect` result enables the next SentenceCard. An explicit skip also advances the in-memory round but keeps the SentenceCard in focused review.
 - The same rule applies to keyboard and button interactions, with a defensive guard below the event handler.
 - Lesson practice always returns the first not-yet-passed SentenceCard in lesson order. It does not use `dueAt` to choose first-pass lesson content.
 - Navigating away or refreshing cannot skip a failed lesson card because it remains the first unpassed card.
@@ -152,10 +152,10 @@ Typing
 
 Evaluating
   ├─ perfect -> persist result -> Passed
-  └─ close/retry -> persist result -> NeedsRetry
+  └─ close/retry -> persist result -> clear mismatches/extras -> focus first cleared slot -> NeedsRetry
 
 NeedsRetry
-  └─ Enter or retry button -> clear answer/result -> Typing same card
+  └─ fill cleared slots without automatic answer hints -> Enter checks same card
 
 Passed
   └─ Enter or next button -> next unpassed card or LessonComplete
@@ -210,8 +210,8 @@ Keep the existing five-part application shell and Practice as the center of grav
 
 - Defaults to the recommended lesson when no explicit scope is selected.
 - Shows Course / Unit / Lesson breadcrumb and lesson-card progress.
-- Keeps the stable direct-input stage and five shortcut positions.
-- The primary shortcut label is Check, Try again, Next, or Complete lesson according to state.
+- Keeps the stable direct-input stage and uses the Julebu-compatible five-shortcut order: Audio, Master, Vocabulary, Check/Next, Answer/Retry.
+- The primary shortcut label is Check, Edit answer, Next, or Complete lesson according to state.
 - A LessonComplete state summarizes the lesson and recommends the next lesson.
 
 ### Courses
@@ -244,7 +244,7 @@ Replace Library with Courses.
 
 ## Accessibility and Interaction
 
-- Preserve focused practice-stage input with no visible textarea.
+- Preserve focused practice-stage input with no visible textarea; use a visually hidden native input for mobile and IME support.
 - Preserve screen-reader instructions and polite live announcements.
 - Announce incomplete, retry, success, and lesson-complete states distinctly.
 - Buttons and keyboard shortcuts share the same action policy.
