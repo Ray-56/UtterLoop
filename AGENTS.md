@@ -24,6 +24,12 @@ npm run build
 
 Run `npm run typecheck` and `npm run build` before claiming implementation work is complete. Run `npm test` when touching domain rules or use cases.
 
+## Git Workflow
+
+Before any operation that writes Git state—including creating a branch, staging, committing, tagging, pushing, or opening a pull request—read and follow `docs/GIT_CONVENTIONS.md`.
+
+Do not commit or push directly to `main`. Use the branch, commit, pull request, and release naming rules in that file unless the user explicitly requires a different workflow.
+
 ## Architecture
 
 Use a small DDD-style frontend architecture:
