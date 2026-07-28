@@ -47,10 +47,16 @@ import {
 import type { SubmitResult, TrainingController } from "../hooks/useTrainingController";
 import { useKeyFeedback } from "../hooks/useKeyFeedback";
 import {
+  resolveFingerGuideStroke,
+  type FingerGuideStroke,
+} from "../keyboard/resolveFingerGuideStroke";
+import {
+  resolveCorrectionSpaceNavigation,
   resolvePracticeKey,
   stabilizeCorrectionDraft,
   type PracticeKeyCommand,
 } from "../keyboard/resolvePracticeKey";
+import { FingerGuide } from "./FingerGuide";
 
 interface PracticeWorkbenchProps {
   controller: TrainingController;
@@ -106,9 +112,15 @@ export function PracticeWorkbench({ controller, onOpenCourses, scope }: Practice
   const [shortcutNotice, setShortcutNotice] = useState<string | null>(null);
   const [caretOffset, setCaretOffset] = useState(0);
   const [correctionAcceptedAnswer, setCorrectionAcceptedAnswer] = useState<string | null>(null);
+  const [fingerGuideFeedback, setFingerGuideFeedback] = useState<{
+    stroke: FingerGuideStroke | null;
+    pulse: number;
+  }>({ stroke: null, pulse: 0 });
   const boardRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const itineraryInitializedRef = useRef(false);
+  const fingerGuideStrokeRef = useRef<FingerGuideStroke | null>(null);
+  const fingerGuideHomeTimerRef = useRef<number | null>(null);
   const {
     isSoundEnabled,
     isSoundSupported,
@@ -156,6 +168,68 @@ export function PracticeWorkbench({ controller, onOpenCourses, scope }: Practice
       ? 100
       : 0;
   const scopeKey = practiceScopeKey(scope);
+  const isFingerGuideMuted =
+    isPaused
+    || isSubmitting
+    || isUpdatingStatus
+    || lastResult?.evaluation.outcome === "perfect";
+
+  const clearFingerGuideHomeTimer = useCallback(() => {
+    if (fingerGuideHomeTimerRef.current !== null) {
+      window.clearTimeout(fingerGuideHomeTimerRef.current);
+      fingerGuideHomeTimerRef.current = null;
+    }
+  }, []);
+
+  const returnFingerGuideHome = useCallback((delay = 0) => {
+    clearFingerGuideHomeTimer();
+
+    const clearStroke = () => {
+      fingerGuideStrokeRef.current = null;
+      fingerGuideHomeTimerRef.current = null;
+      setFingerGuideFeedback((current) => current.stroke
+        ? { ...current, stroke: null }
+        : current);
+    };
+
+    if (delay > 0) {
+      fingerGuideHomeTimerRef.current = window.setTimeout(clearStroke, delay);
+      return;
+    }
+
+    clearStroke();
+  }, [clearFingerGuideHomeTimer]);
+
+  const triggerFingerGuide = useCallback(
+    (event: ReactKeyboardEvent<HTMLInputElement>, command: PracticeKeyCommand | null) => {
+      const stroke = resolveFingerGuideStroke({
+        altGraphKey: event.getModifierState("AltGraph"),
+        altKey: event.altKey,
+        code: event.code,
+        command,
+        ctrlKey: event.ctrlKey,
+        isComposing: event.nativeEvent.isComposing,
+        metaKey: event.metaKey,
+        shiftKey: event.shiftKey,
+      });
+
+      if (!stroke) {
+        return;
+      }
+
+      clearFingerGuideHomeTimer();
+      fingerGuideStrokeRef.current = stroke;
+      setFingerGuideFeedback((current) => ({
+        stroke,
+        pulse: current.pulse + 1,
+      }));
+      fingerGuideHomeTimerRef.current = window.setTimeout(
+        () => returnFingerGuideHome(),
+        stroke.code === "Enter" ? 150 : 450,
+      );
+    },
+    [clearFingerGuideHomeTimer, returnFingerGuideHome],
+  );
 
   useEffect(() => {
     setAnswer("");
@@ -175,8 +249,11 @@ export function PracticeWorkbench({ controller, onOpenCourses, scope }: Practice
     setShortcutNotice(null);
     setCaretOffset(0);
     setCorrectionAcceptedAnswer(null);
+    returnFingerGuideHome();
     itineraryInitializedRef.current = false;
-  }, [scopeKey]);
+  }, [returnFingerGuideHome, scopeKey]);
+
+  useEffect(() => clearFingerGuideHomeTimer, [clearFingerGuideHomeTimer]);
 
   useEffect(() => {
     if (!session || itineraryInitializedRef.current) {
@@ -751,20 +828,15 @@ export function PracticeWorkbench({ controller, onOpenCourses, scope }: Practice
         && !event.nativeEvent.isComposing
       ) {
         const selectionEnd = event.currentTarget.selectionEnd ?? 0;
-        const followingErrorOffset = answer.indexOf(
-          CORRECTION_SLOT_PLACEHOLDER,
-          selectionEnd,
-        );
-        const nextErrorOffset = followingErrorOffset >= 0
-          ? followingErrorOffset
-          : answer.indexOf(CORRECTION_SLOT_PLACEHOLDER);
+        const navigation = resolveCorrectionSpaceNavigation(answer, selectionEnd);
 
-        if (nextErrorOffset >= 0) {
+        if (navigation) {
           event.preventDefault();
-          triggerKeyFeedback({ type: "append", value: " " });
+          triggerFingerGuide(event, navigation.command);
+          triggerKeyFeedback(navigation.command);
           focusInputRange(
-            nextErrorOffset,
-            nextErrorOffset + CORRECTION_SLOT_PLACEHOLDER.length,
+            navigation.selectionStart,
+            navigation.selectionEnd,
           );
           return;
         }
@@ -791,6 +863,8 @@ export function PracticeWorkbench({ controller, onOpenCourses, scope }: Practice
         return;
       }
 
+      triggerFingerGuide(event, command);
+
       if (command.type === "append" || command.type === "delete") {
         triggerKeyFeedback(command);
         return;
@@ -809,6 +883,7 @@ export function PracticeWorkbench({ controller, onOpenCourses, scope }: Practice
       lastResult,
       preview?.isComplete,
       runCommand,
+      triggerFingerGuide,
       triggerKeyFeedback,
     ],
   );
@@ -895,6 +970,28 @@ export function PracticeWorkbench({ controller, onOpenCourses, scope }: Practice
   }, [itinerary, resetItemState, session]);
 
   useEffect(() => {
+    const delay = fingerGuideStrokeRef.current?.code === "Enter" ? 150 : 0;
+    returnFingerGuideHome(delay);
+  }, [activeItem?.card.id, returnFingerGuideHome]);
+
+  useEffect(() => {
+    if (
+      isPaused
+      || isUpdatingStatus
+      || lastResult?.evaluation.outcome === "perfect"
+    ) {
+      if (fingerGuideStrokeRef.current?.code !== "Enter") {
+        returnFingerGuideHome();
+      }
+    }
+  }, [
+    isPaused,
+    isUpdatingStatus,
+    lastResult?.evaluation.outcome,
+    returnFingerGuideHome,
+  ]);
+
+  useEffect(() => {
     if (activeItem) {
       focusBoard();
     }
@@ -970,10 +1067,13 @@ export function PracticeWorkbench({ controller, onOpenCourses, scope }: Practice
         currentNumber={currentIndex + 1}
         activeWordIndex={activeWordIndex}
         elapsedSeconds={elapsedSeconds}
+        fingerGuidePulse={fingerGuideFeedback.pulse}
+        fingerGuideStroke={fingerGuideFeedback.stroke}
         inputRef={inputRef}
         isAnswerVisible={isAnswerVisible}
         isCorrecting={Boolean(correctionAcceptedAnswer)}
         isInVocabulary={isInVocabulary}
+        isFingerGuideMuted={isFingerGuideMuted}
         isKeySoundEnabled={isSoundEnabled}
         isKeySoundSupported={isSoundSupported}
         isPaused={isPaused}
@@ -1026,9 +1126,12 @@ interface SentenceGameBoardProps {
   context: PracticeContext | null;
   currentNumber: number;
   elapsedSeconds: number;
+  fingerGuidePulse: number;
+  fingerGuideStroke: FingerGuideStroke | null;
   inputRef: RefObject<HTMLInputElement | null>;
   isAnswerVisible: boolean;
   isCorrecting: boolean;
+  isFingerGuideMuted: boolean;
   isInVocabulary: boolean;
   isKeySoundEnabled: boolean;
   isKeySoundSupported: boolean;
@@ -1072,9 +1175,12 @@ function SentenceGameBoard({
   context,
   currentNumber,
   elapsedSeconds,
+  fingerGuidePulse,
+  fingerGuideStroke,
   inputRef,
   isAnswerVisible,
   isCorrecting,
+  isFingerGuideMuted,
   isInVocabulary,
   isKeySoundEnabled,
   isKeySoundSupported,
@@ -1319,6 +1425,12 @@ function SentenceGameBoard({
         <span>Prompt</span>
         <p>{activeItem.card.prompt}</p>
       </div>
+
+      <FingerGuide
+        isMuted={isFingerGuideMuted}
+        pulse={fingerGuidePulse}
+        stroke={fingerGuideStroke}
+      />
 
       <div className="game-hud">
         <span>

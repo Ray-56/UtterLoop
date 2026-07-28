@@ -40,6 +40,33 @@ export interface StableCorrectionDraft {
   selectionEnd: number;
 }
 
+export interface CorrectionSpaceNavigation {
+  command: { type: "append"; value: " " };
+  selectionStart: number;
+  selectionEnd: number;
+}
+
+export function resolveCorrectionSpaceNavigation(
+  answer: string,
+  selectionEnd: number,
+): CorrectionSpaceNavigation | null {
+  const followingErrorOffset = answer.indexOf(
+    CORRECTION_SLOT_PLACEHOLDER,
+    selectionEnd,
+  );
+  const nextErrorOffset = followingErrorOffset >= 0
+    ? followingErrorOffset
+    : answer.indexOf(CORRECTION_SLOT_PLACEHOLDER);
+
+  return nextErrorOffset < 0
+    ? null
+    : {
+        command: { type: "append", value: " " },
+        selectionStart: nextErrorOffset,
+        selectionEnd: nextErrorOffset + CORRECTION_SLOT_PLACEHOLDER.length,
+      };
+}
+
 export function stabilizeCorrectionDraft(
   previousAnswer: string,
   nextAnswer: string,

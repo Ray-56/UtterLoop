@@ -46,6 +46,10 @@ _Avoid_: Question, hint
 An explicit learner action that exposes the Target Sentence during recall. It is retained as learning evidence even if the answer is hidden again.
 _Avoid_: Prompt, word-level correction
 
+**Finger Guide**:
+A practice aid that visualizes standard key-to-finger assignments for the learner's own keystrokes without indicating upcoming Target Sentence characters.
+_Avoid_: Finger detection, Answer Reveal
+
 **Attempt**:
 A learner's submitted output for a SentenceCard during practice.
 _Avoid_: Response, input
