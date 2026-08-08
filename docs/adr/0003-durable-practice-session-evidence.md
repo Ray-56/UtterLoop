@@ -1,0 +1,19 @@
+# Durable Practice Session Evidence
+
+UtterLoop records turn-level learning evidence in PracticeLog, but Beta measures also need to distinguish a Practice Session that completed, was deliberately replaced, was dismissed during Quick Start, became invalid, or remains recoverable after interruption. PracticeLog cannot express a session with no submitted Attempt, and the active checkpoint is operational state that disappears after completion.
+
+UtterLoop therefore stores a separate, immutable, target-free Practice Session Evidence record when a Practice Session reaches a terminal outcome. PracticeLog remains the source for Attempt and learner-signal evidence and gains only optional session, round, occurrence, queue-reason, and scheduled-due context. We do not event-source keyboard input or every Practice command.
+
+A Practice Session represents one learner intent. A Practice Round represents its scheduled occurrence itinerary; the current product has one round per session but persists both identities. Session, round, occurrence, and turn IDs remain stable across reload recovery. A checkpoint is mutable operational state; terminal evidence is durable history.
+
+The lifecycle boundary owns identity, engagement, compatible checkpoint recovery, monotonic revisions, and terminal persistence. Writing terminal evidence and deleting the matching checkpoint is atomic and idempotent. A late or stale checkpoint write cannot recreate a terminal session. Quick Start completion or dismissal updates its preference in the same terminal transaction.
+
+Merely opening Practice does not engage a session. Valid input, First Exposure continuation, Recall Support, target audio, Answer Reveal, Skip, or submission does. Reload, page hiding, navigation, and tab closure remain interruptions while a compatible checkpoint is recoverable. Explicit start-over or scope replacement abandons an engaged session. A valid engaged checkpoint may be projected as presumed abandoned after a documented inactivity threshold and finalized as expired when lifecycle recovery encounters it. Corrupt, incompatible, catalog-mismatched, and unengaged expired checkpoints are invalidated instead of attributed to the learner.
+
+The learner-facing Beta Readiness projection uses 24 hours without a checkpoint update as its presumed-abandonment threshold. The projection keeps this duration injectable so historical tests and future product research can evaluate another threshold without changing persisted evidence. Presumed abandonment is reversible: a structurally and catalog-compatible checkpoint remains resumable for 30 days. After that durable resume window, an engaged checkpoint is finalized as `abandoned/expired`; an unengaged checkpoint is discarded without entering the abandonment denominator.
+
+Strict retention measures are calculated from context-bearing Review attempts whose scheduled due time is captured when the occurrence opens. Historical `phase: legacy` rows and newer rows without the required context remain historical activity but never become strict retained-recall evidence. The persisted measurement epoch and coverage counts make that exclusion visible.
+
+Practice Session Evidence and its round summary may retain stable catalog identifiers for de-duplication but never Prompt, Target Sentence, accepted answer, answer text, draft, audio, or raw keystroke history. Historical identifiers may outlive the active catalog. Full Backup includes terminal evidence and the measurement epoch but excludes the active checkpoint.
+
+This decision adds one IndexedDB collection, a compatible backup version, and small PracticeLog context. In return it preserves the existing learning model while providing truthful completion, abandonment, same-round, due-review, requeue, and retention evidence without coupling React state to analytics semantics.

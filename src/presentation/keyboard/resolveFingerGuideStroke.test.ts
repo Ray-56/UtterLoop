@@ -35,8 +35,8 @@ describe("resolveFingerGuideStroke", () => {
 
   it("exposes the complete compact ANSI typing block", () => {
     expect(FINGER_GUIDE_ROWS.map((row) => row.map(({ code }) => code))).toEqual([
-      ["Escape"],
       [
+        "Escape",
         "Backquote",
         "Digit1",
         "Digit2",

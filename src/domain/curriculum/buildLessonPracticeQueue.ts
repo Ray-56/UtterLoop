@@ -1,4 +1,5 @@
 import type { SentenceCard } from "../content/SentenceCard";
+import { hasFirstPass, type SentenceLearningState } from "../learning/SentenceLearningState";
 import type { ReviewState } from "../review/ReviewState";
 import { createInitialReviewState, isReviewDue } from "../review/reviewScheduler";
 import type { PracticeQueueItem } from "../training/PracticeQueue";
@@ -15,6 +16,7 @@ export function buildLessonPracticeQueue(
   course: Course,
   lessonId: string,
   cards: SentenceCard[],
+  learningStates: SentenceLearningState[],
   reviewStates: ReviewState[],
   now: Date,
   mode: LessonPracticeMode,
@@ -27,6 +29,7 @@ export function buildLessonPracticeQueue(
 
   const cardById = new Map(cards.map((card) => [card.id, card]));
   const reviewByCardId = new Map(reviewStates.map((reviewState) => [reviewState.cardId, reviewState]));
+  const learningByCardId = new Map(learningStates.map((state) => [state.cardId, state]));
   const items = lesson.cardIds.map<PracticeQueueItem>((cardId) => {
     const card = cardById.get(cardId);
 
@@ -42,16 +45,22 @@ export function buildLessonPracticeQueue(
       isDue: isReviewDue(reviewState, now),
     };
   });
-  const completed = items.every((item) => hasPassed(item.reviewState));
+  const completed = lesson.cardIds.every((cardId) => hasFirstPass(learningByCardId.get(cardId)));
 
   const activeItems = items.filter((item) => item.reviewState.learningStatus !== "mastered");
 
   return {
-    items: mode === "learn" ? activeItems.filter((item) => !hasPassed(item.reviewState)) : activeItems,
+    items: mode === "learn"
+      ? activeItems.filter((item) => {
+          const learningState = learningByCardId.get(item.card.id);
+          return !hasFirstPass(learningState)
+            && !(
+              learningState?.acquisitionStatus === "ready-independent"
+              && item.reviewState.stage === 0
+              && !item.isDue
+            );
+        })
+      : activeItems,
     completed,
   };
-}
-
-function hasPassed(reviewState: ReviewState): boolean {
-  return reviewState.stage >= 1 || reviewState.learningStatus === "mastered";
 }

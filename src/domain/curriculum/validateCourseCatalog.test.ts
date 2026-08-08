@@ -121,7 +121,43 @@ describe("validateCourseCatalog", () => {
 
     expect(() => validateCourseCatalog(value)).toThrow("objective");
   });
+
+  it("rejects empty Learning Support context", () => {
+    const value = catalog();
+    Object.assign(value.cards[0], { learningSupport: learningSupport({ context: " " }) });
+
+    expect(() => validateCourseCatalog(value)).toThrow("learning context");
+  });
 });
+
+function learningSupport(overrides: Record<string, unknown> = {}) {
+  return {
+    context: "在陈述一个完整的想法。",
+    communicativeFunction: "陈述",
+    pattern: "This + be + a complete sentence.",
+    keywords: ["complete", "sentence"],
+    frame: "This is a ___ ___.",
+    pronunciation: {
+      dialect: "en-US",
+      sentenceIpa: "/ðɪs ɪz ə kəmˈpliːt ˈsɛntəns/",
+      chunks: [
+        { text: "This is", ipa: "/ðɪs ɪz/" },
+        { text: "a complete sentence", ipa: "/ə kəmˈpliːt ˈsɛntəns/" },
+      ],
+    },
+    grammar: {
+      structure: "S + V + C",
+      explanation: "This is 引出补语。",
+      points: ["be 动词"],
+      chunks: [
+        { text: "This", role: "subject", label: "主语 S" },
+        { text: "is", role: "predicate", label: "谓语 V" },
+        { text: "a complete sentence", role: "complement", label: "补语 C" },
+      ],
+    },
+    ...overrides,
+  };
+}
 
 function catalog(): CourseCatalog {
   return {

@@ -13,6 +13,15 @@ import { setVocabularyStatus } from "./use-cases/setVocabularyStatus";
 import { skipPracticeCard } from "./use-cases/skipPracticeCard";
 import { revealPracticeAnswer } from "./use-cases/revealPracticeAnswer";
 import type { AttemptEvidence } from "../domain/practice/PracticeAttempt";
+import type { PracticeAttempt } from "../domain/practice/PracticeAttempt";
+import { completeSentenceFirstExposure } from "./use-cases/completeFirstExposure";
+import type { PracticeSignalContext } from "./use-cases/revealPracticeAnswer";
+import { recordPracticeSupport } from "./use-cases/recordPracticeSupport";
+import { exportFullBackup } from "./use-cases/exportFullBackup";
+import { restoreFullBackup } from "./use-cases/restoreFullBackup";
+import { updateAppPreferences } from "./use-cases/updateAppPreferences";
+import type { AppPreferences } from "../domain/backup/UtterLoopFullBackup";
+import type { PracticeSessionCheckpoint } from "./practice-session/PracticeSessionCheckpoint";
 
 export const COURSE_BUNDLE_SCHEMA_VERSION = 2 as const;
 
@@ -49,6 +58,14 @@ export class UtterLoopService {
     );
   }
 
+  submitPracticeTurn(attempt: PracticeAttempt, now = new Date()) {
+    return submitPracticeAttempt(this.repository, attempt, now);
+  }
+
+  completeFirstExposure(cardId: string, now = new Date()) {
+    return completeSentenceFirstExposure(this.repository, cardId, now);
+  }
+
   previewAttempt(card: SentenceCard, answer: string) {
     return previewPracticeAttempt(card, answer);
   }
@@ -65,16 +82,27 @@ export class UtterLoopService {
     cardId: string,
     evidence: AttemptEvidence,
     now = new Date(),
+    context: PracticeSignalContext = {},
   ) {
-    return skipPracticeCard(this.repository, cardId, evidence, now);
+    return skipPracticeCard(this.repository, cardId, evidence, now, context);
   }
 
   revealPracticeAnswer(
     cardId: string,
     evidence: AttemptEvidence,
     now = new Date(),
+    context: PracticeSignalContext = {},
   ) {
-    return revealPracticeAnswer(this.repository, cardId, evidence, now);
+    return revealPracticeAnswer(this.repository, cardId, evidence, now, context);
+  }
+
+  recordPracticeSupport(
+    cardId: string,
+    evidence: AttemptEvidence,
+    now = new Date(),
+    context: PracticeSignalContext = {},
+  ) {
+    return recordPracticeSupport(this.repository, cardId, evidence, now, context);
   }
 
   async exportCourseBundle(): Promise<CourseBundle> {
@@ -120,6 +148,30 @@ export class UtterLoopService {
 
   clearLearningProgress() {
     return this.repository.clearLearningProgress();
+  }
+
+  updateAppPreferences(patch: Partial<AppPreferences>) {
+    return updateAppPreferences(this.repository, patch);
+  }
+
+  exportFullBackup(now = new Date()) {
+    return exportFullBackup(this.repository, now);
+  }
+
+  restoreFullBackup(value: unknown) {
+    return restoreFullBackup(this.repository, value);
+  }
+
+  getPracticeSessionCheckpoint() {
+    return this.repository.getPracticeSessionCheckpoint();
+  }
+
+  savePracticeSessionCheckpoint(checkpoint: PracticeSessionCheckpoint) {
+    return this.repository.savePracticeSessionCheckpoint(checkpoint);
+  }
+
+  deletePracticeSessionCheckpoint() {
+    return this.repository.deletePracticeSessionCheckpoint();
   }
 
   clearAll() {

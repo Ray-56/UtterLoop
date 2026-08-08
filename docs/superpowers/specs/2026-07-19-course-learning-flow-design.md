@@ -1,7 +1,18 @@
 # UtterLoop Course and Practice Flow Design
 
 Date: 2026-07-19
-Status: Approved in conversation
+Status: Historical baseline; partially superseded on 2026-07-31
+
+> [!IMPORTANT]
+> This specification still defines the course-led shell, catalog hierarchy, and
+> basic Practice scopes. The
+> [Guided Sentence Learning Design](./2026-07-31-guided-sentence-learning-design.md)
+> supersedes its first-attempt, passing, completion, requeue, and review-scheduling
+> rules. The
+> [Product Completion Design](./2026-07-31-product-completion-design.md)
+> supersedes its Review disclosure and management, complete Course replay, Next
+> lesson, Progress, backup, routing, recovery, and resumable-session rules. When
+> wording conflicts, the 2026-07-31 specifications are authoritative.
 
 ## Goal
 
@@ -9,7 +20,7 @@ Turn UtterLoop from a flat demo deck into a course-led sentence recall app while
 
 The change has two coupled outcomes:
 
-1. A learner cannot leave a SentenceCard until the attempt is complete and evaluates as `perfect`.
+1. The recall surface blocks ordinary next-card advancement until the current instructional turn is resolved. Guided acquisition, Corrective Practice, requeue, and explicit Skip behavior follow the Guided Sentence Learning Design.
 2. Learning content is organized into independent courses with an ordered outline, a recommended learning path, lesson progress, and safe default content.
 
 ## Approved Product Rules
@@ -17,11 +28,11 @@ The change has two coupled outcomes:
 - An incomplete attempt does not create an Attempt, update ReviewState, or advance the learner.
 - Enter on an incomplete attempt shows an actionable notice.
 - A complete attempt that evaluates as `close` or `retry` records feedback, keeps matched words, clears mismatches and extras, and focuses the first cleared slot without revealing its answer.
-- A `perfect` result enables the next SentenceCard. An explicit skip also advances the in-memory round but keeps the SentenceCard in focused review.
+- A `perfect` result resolves the current instructional turn; whether it creates a First Pass, advances ReviewState, or requeues the card depends on PracticePhase and recall evidence. An explicit skip advances the in-memory round and returns the card to focused review.
 - The same rule applies to keyboard and button interactions, with a defensive guard below the event handler.
-- Lesson practice always returns the first not-yet-passed SentenceCard in lesson order. It does not use `dueAt` to choose first-pass lesson content.
-- Navigating away or refreshing cannot skip a failed lesson card because it remains the first unpassed card.
-- A lesson is complete when every referenced SentenceCard has received at least one perfect recall or has been explicitly marked mastered.
+- Lesson learning resolves cards in lesson order while honoring introduced, Guided-ready, Independent-ready, and First Pass state. It does not use `dueAt` to choose first-pass lesson content.
+- Navigating away or refreshing creates no learning evidence. Compatible UI continuity may resume from a checkpoint, while durable acquisition state still prevents an unresolved card from being counted complete.
+- A lesson is complete only when every referenced SentenceCard has a durable First Pass, including an explicit-mastery First Pass.
 - Course completion and long-term spaced-review mastery are distinct progress measures.
 - Courses are independent. The previous Deck model and old IndexedDB data do not need to be supported.
 - The app will use a new IndexedDB database and schema. The old database is not read or migrated, but it is not silently deleted.
@@ -113,13 +124,13 @@ interface SentenceCard {
 
 Progress is a derived projection and is not stored as a percentage.
 
-- attempted: ReviewState has `lastReviewedAt` or an explicit mastered status;
-- passed: ReviewState stage is at least 1, or status is mastered;
-- lesson completed: all lesson cards are passed;
+- introduced: SentenceLearningState has `introducedAt`;
+- passed: SentenceLearningState has the monotonic `firstPassedAt` milestone;
+- lesson completed: all lesson cards have a First Pass;
 - unit/course completed: all child lessons are completed;
 - recommended lesson: first incomplete lesson in path/course order.
 
-Mastery remains a separate projection of ReviewState stage and explicit mastered status.
+Retention mastery remains a separate, mutable projection of ReviewState stage and explicit mastered status. A later lapse can lower retention without erasing coverage.
 
 ## Practice Scopes
 
@@ -129,13 +140,15 @@ The application layer owns content selection through an explicit scope:
 type PracticeScope =
   | { kind: "lesson"; courseId: string; lessonId: string; mode: "learn" | "replay" }
   | { kind: "review"; courseId?: string }
-  | { kind: "course"; courseId: string };
+  | { kind: "course"; courseId: string }
+  | { kind: "vocabulary"; courseId?: string; cardId?: string };
 ```
 
-- `lesson/learn` selects the first unpassed card in lesson order.
+- `lesson/learn` selects the next unresolved acquisition occurrence in lesson order.
 - `lesson/replay` practices all lesson cards in outline order.
 - `review` selects only already-attempted cards whose ReviewState is due.
-- `course` reinforces cards from one course without altering its outline.
+- `course` traverses every eligible card from every lesson in canonical outline order and retains occurrence context.
+- `vocabulary` selects saved, non-mastered cards and may be narrowed to one Course or one Card.
 
 React receives a resolved queue/read model. Course filtering, completion rules, and recommended-next logic do not live in components.
 
@@ -209,6 +222,7 @@ Keep the existing five-part application shell and Practice as the center of grav
 ### Practice
 
 - Defaults to the recommended lesson when no explicit scope is selected.
+- Enters the viewport-bound cockpit directly, without a visible page-level Practice title or routine status strip above it. A screen-reader-only `Practice session` heading remains available for structure and route announcement.
 - Shows Course / Unit / Lesson breadcrumb and lesson-card progress.
 - Keeps the stable direct-input stage and uses the Julebu-compatible five-shortcut order: Audio, Master, Vocabulary, Check/Next, Answer/Retry.
 - The primary shortcut label is Check, Edit answer, Next, or Complete lesson according to state.
@@ -255,6 +269,8 @@ Replace Library with Courses.
 ## Error Handling
 
 - Repository startup failures render the existing error state.
+- Routine local-save success and successful browser pronunciation playback are silent; Practice does not reserve page chrome for `Saved locally`, speech-ready, or playback-success messages.
+- A non-blocking continuity-save failure appears as a compact action-specific Retry notice in the cockpit top bar. A critical write failure keeps the learner on the current card, preserves the draft and controls required for recovery, and presents a blocking Retry error.
 - Invalid default bundles fail fast during development tests.
 - Invalid imported bundles show a non-destructive validation message.
 - Atomic bundle installation prevents partially installed courses.

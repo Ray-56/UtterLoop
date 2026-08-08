@@ -1,32 +1,75 @@
 import type { SentenceCardId } from "../../domain/content/SentenceCard";
-import { createInitialReviewState, applySkippedReview } from "../../domain/review/reviewScheduler";
-import type { ReviewState } from "../../domain/review/ReviewState";
-import type { TrainingRepository } from "../ports/TrainingRepository";
+import { applyPracticeSignalPolicy } from "../../domain/learning/learningAndReviewPolicy";
+import { completeFirstExposure } from "../../domain/learning/SentenceLearningState";
 import type { AttemptEvidence } from "../../domain/practice/PracticeAttempt";
+import {
+  mergePracticeSignalLogEntry,
+  normalizeAttemptEvidence,
+} from "../../domain/practice/PracticeLogEntry";
+import { createPracticeTurn } from "../../domain/practice/PracticeTurn";
+import { createInitialReviewState } from "../../domain/review/reviewScheduler";
 import { createLocalId } from "../createLocalId";
+import type { TrainingRepository } from "../ports/TrainingRepository";
+import type { PracticeSignalContext } from "./revealPracticeAnswer";
 
 export async function skipPracticeCard(
   repository: TrainingRepository,
   cardId: SentenceCardId,
   evidence: AttemptEvidence,
   now: Date,
-): Promise<ReviewState> {
+  context: PracticeSignalContext = {},
+) {
   const card = await repository.getSentenceCard(cardId);
+  if (!card) throw new Error(`SentenceCard not found: ${cardId}`);
 
-  if (!card) {
-    throw new Error(`SentenceCard not found: ${cardId}`);
+  const turnId = context.turnId ?? createLocalId("turn");
+  const existing = await repository.getPracticeLogEntry(`turn-signal:${turnId}`);
+  const currentSignal = existing?.kind === "signal" ? existing : undefined;
+  const firstAttempt = await repository.getPracticeLogEntry(`turn-attempt:${turnId}:0`);
+  let learningState = await repository.getSentenceLearningState(cardId);
+  if (!learningState?.introducedAt) {
+    learningState = completeFirstExposure(learningState, cardId, now.toISOString());
   }
-
-  const currentReviewState = (await repository.getReviewState(cardId)) ?? createInitialReviewState(cardId, now);
-  const reviewState = applySkippedReview(currentReviewState, now, evidence.answerWasRevealed);
-  await repository.savePracticeResult(reviewState, {
-    id: createLocalId("skip"),
-    cardId,
-    submittedAt: now.toISOString(),
-    answer: "",
-    outcome: "skipped",
-    accuracy: 0,
-    ...evidence,
+  const currentReviewState = (await repository.getReviewState(cardId))
+    ?? createInitialReviewState(cardId, now);
+  const normalized = normalizeAttemptEvidence(evidence);
+  const turn = {
+    ...createPracticeTurn(
+      turnId,
+      cardId,
+      context.phase ?? "guided-recall",
+      normalized.supportLevelUsed,
+      normalized.supportKindsUsed,
+    ),
+    answerWasRevealed: normalized.answerWasRevealed,
+    receivedCorrection:
+      (context.receivedCorrection ?? normalized.receivedCorrection)
+      || (firstAttempt?.kind === "attempt" && firstAttempt.outcome !== "perfect"),
+    reviewFailureRecorded:
+      Boolean(context.reviewFailureRecorded)
+      || Boolean(currentSignal?.reviewFailureRecorded),
+  };
+  const decision = applyPracticeSignalPolicy({
+    learningState,
+    reviewState: currentReviewState,
+    turn,
+    signalKind: "skipped",
+    now,
   });
-  return reviewState;
+  const logEntry = mergePracticeSignalLogEntry(currentSignal, {
+    turnId,
+    cardId,
+    phase: turn.phase,
+    at: now.toISOString(),
+    signalKind: "skipped",
+    reviewFailureRecorded: decision.turn.reviewFailureRecorded,
+    evidence: normalized,
+    context: context.practiceLogContext,
+  });
+  await repository.savePracticeWrite({
+    learningState: decision.learningState,
+    reviewState: decision.reviewState,
+    logEntry,
+  });
+  return decision.reviewState;
 }

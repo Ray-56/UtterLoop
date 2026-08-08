@@ -55,8 +55,8 @@ describe("deriveCourseProgress", () => {
 
   it("completes a lesson only after every card has passed", () => {
     const progress = deriveCourseProgress(course, [
-      reviewState("card-1", 1),
-      reviewState("card-2", 0),
+      learningState("card-1", true),
+      learningState("card-2", false),
     ]);
 
     expect(progress.units[0].lessons[0]).toMatchObject({
@@ -70,19 +70,19 @@ describe("deriveCourseProgress", () => {
 
   it("moves the recommendation after a lesson is complete", () => {
     const progress = deriveCourseProgress(course, [
-      reviewState("card-1", 1),
-      reviewState("card-2", 1),
+      learningState("card-1", true),
+      learningState("card-2", true),
     ]);
 
     expect(progress.units[0].lessons[0].status).toBe("completed");
     expect(progress.recommendedLessonId).toBe("lesson-2");
   });
 
-  it("counts explicitly mastered cards as passed", () => {
+  it("counts explicit mastery First Pass evidence as passed", () => {
     const progress = deriveCourseProgress(course, [
-      { ...reviewState("card-1", 0), learningStatus: "mastered" as const },
-      reviewState("card-2", 1),
-      reviewState("card-3", 1),
+      learningState("card-1", true, "explicit-mastery"),
+      learningState("card-2", true),
+      learningState("card-3", true),
     ]);
 
     expect(progress).toMatchObject({
@@ -91,15 +91,27 @@ describe("deriveCourseProgress", () => {
       recommendedLessonId: null,
     });
   });
+
+  it("keeps completion after a later ReviewState lapse because coverage reads only First Pass", () => {
+    const progress = deriveCourseProgress(course, [
+      learningState("card-1", true),
+      learningState("card-2", true),
+      learningState("card-3", true),
+    ]);
+
+    expect(progress.status).toBe("completed");
+  });
 });
 
-function reviewState(cardId: string, stage: 0 | 1) {
-  return {
+function learningState(cardId: string, passed: boolean, source: "independent-recall" | "explicit-mastery" = "independent-recall") {
+  return passed ? {
     cardId,
-    stage,
-    dueAt: "2026-07-20T00:00:00.000Z",
-    lastReviewedAt: "2026-07-19T00:00:00.000Z",
-    streak: stage,
-    lapseCount: 0,
+    introducedAt: "2026-07-19T00:00:00.000Z",
+    firstPassedAt: "2026-07-20T00:00:00.000Z",
+    firstPassSource: source,
+  } : {
+    cardId,
+    introducedAt: "2026-07-19T00:00:00.000Z",
+    acquisitionStatus: "needs-guided" as const,
   };
 }

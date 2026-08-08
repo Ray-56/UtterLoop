@@ -1,298 +1,150 @@
 # UtterLoop Finger Guide Design
 
 Date: 2026-07-28
-Status: Approved in conversation
+Updated: 2026-08-02
+Status: Approved in conversation and implemented
 
 ## Goal
 
-Add a non-predictive Finger Guide to the Practice stage so learners can see the recommended touch-typing finger for each physical key they press without revealing any part of the Target Sentence.
+Provide non-predictive touch-typing guidance after each accepted physical keystroke without revealing any part of the Target Sentence. The Finger Guide is supporting feedback, not a second input stage, answer hint, or learning-data source.
 
-The guide is immediate visual instruction, not a second input method, an answer hint, or a new source of learning data.
+## Product Rules
 
-## Approved Product Rules
+- The guide mirrors only supported physical keystrokes accepted by Practice. It never highlights the next expected character.
+- It recommends a standard finger assignment; it does not claim to detect which finger the learner used.
+- Correct and incorrect characters receive identical neutral guidance.
+- Four persisted device modes are available: `Auto`, `Compact`, `Full`, and `Off`. The default is `Auto`.
+- `Auto` and `Compact` use the post-key compact strip during editable recall. `Auto` may hide it when a desktop viewport is too short; explicit `Compact` keeps it present when width permits. `Full` opens the complete ANSI map without increasing page height. Any visible compact strip can temporarily expand or collapse the map.
+- First Exposure, Pause, submitting/updating states, and a passed result return to a static compact home-row reminder. They do not retain a predictive-looking active key.
+- `Off`, the existing `700px` mobile breakpoint, and very short touch landscape viewports hide the guide without leaving an empty row.
+- The visual keyboard cannot be clicked to type and does not emit per-key screen-reader announcements.
+- The guide does not store keystrokes, calculate finger accuracy, or alter Attempt, AnswerEvaluation, ReviewState, or PracticeQueue behavior.
+- Paste, voice input, and IME composition remain supported but do not fabricate key or finger feedback.
 
-- The Finger Guide mirrors only supported physical keystrokes that Practice accepts. It never highlights the next expected character.
-- It demonstrates a recommended finger assignment; the browser cannot detect which finger the learner actually used.
-- It does not compare the pressed key with the Target Sentence. Correct and incorrect characters receive the same neutral guidance.
-- It is always visible on desktop and tablet, with no collapse control or persisted preference.
-- It is hidden at the existing `700px` mobile breakpoint. Mobile keeps the native software keyboard and current word-track experience.
-- It is visual-only and cannot be clicked to type.
-- It does not store keystrokes, calculate finger accuracy, or alter Attempt, AnswerEvaluation, ReviewState, or PracticeQueue behavior.
-- Pasted text, voice input, and IME composition remain supported but do not fabricate key or finger animation.
+## Practice Composition
 
-## Practice Layout
+Practice is a viewport-bound cockpit rather than a stack of independent cards:
 
-The Finger Guide remains inside the existing bordered `game-shell`. It becomes a stable row after Prompt and before the current Words / Match / Tags HUD:
-
-```text
-Top bar and progress
-Result feedback
-Answer hint and word track
-Prompt
-Finger Guide
-Words / Match / Tags
-Five practice shortcuts
-```
-
-This placement keeps the guide close to the learner's input while preserving the established word track, Answer location, HUD, and five-shortcut order.
-
-The desktop `game-shell` grid grows from seven to eight rows. The Finger Guide occupies an `auto` row after Prompt. At the mobile breakpoint, CSS hides that row's child and the implicit row collapses to zero height.
-
-The guide is a flat band rather than a nested card. It uses a soft-paper background and one top border. The HUD keeps its existing top border as the guide/HUD divider; do not add a second adjacent line. The keyboard is centered with a maximum width so it does not stretch across the full 1480px Practice workspace.
-
-## Visual Direction
-
-Follow `design-system/utterloop/MASTER.md` without introducing a new visual language:
-
-- top-down, flat vector presentation;
-- graphite and white structure;
-- 4–6px key radii and one-pixel high-contrast borders;
-- system and monospace fonts already used by the app;
-- no gradients, glass effects, neumorphism, remote fonts, raster hand assets, or ornamental motion.
-
-### Keyboard
-
-The resting keyboard is neutral so it cannot be mistaken for AnswerEvaluation feedback. `F` and `J` retain visible home-row markers.
-
-The current key, or key pair for a shifted character:
-
-- changes to the existing yellow active color;
-- compresses with the established 105ms keycap motion;
-- remains identifiable by position and label, not color alone.
-
-The guide header shows:
+Practice navigation reveals this cockpit immediately. It has no visible page-level title, view number, or routine sync strip above the stage; a screen-reader-only `Practice session` heading preserves the page landmark and route announcement.
 
 ```text
-FINGER GUIDE                         F · LEFT INDEX
+Top bar: scope, controls, score, Words / Match / Tags
+Progress
+Status band: Prompt + live result feedback
+Focus shell:
+  shared Learning Support / Answer slot
+  word track
+  compact Finger Guide (or no row when hidden)
+Five Practice shortcuts
 ```
 
-For a shifted character, the label names both recommended fingers:
+The root stage uses five explicit grid rows. The focus shell owns remaining height. Long word tracks scroll inside their own area; expanded support and First Exposure details scroll inside the support body. The Learning Support action footer and five Practice shortcuts remain visible.
 
-```text
-A · LEFT PINKY + RIGHT PINKY SHIFT
-```
+The top bar reserves only a compact exceptional-status slot. Routine local saves, normal speech availability, and successful pronunciation playback produce no visible or live-region success message. A non-blocking save failure may occupy that slot with an action-specific Retry control; a critical Practice write failure remains a blocking error and does not advance or clear the current turn.
 
-At rest, the right-hand label reads:
+The Answer owns one stable slot above the word track. Ordinary Recall leaves that slot visually empty. `Ctrl+;` reveals only the single-row grammar map, with a plain target-row fallback for content without complete token annotations. During recall, hiding Answer removes the whole row and must not leave a level-four support copy behind.
 
-```text
-HOME ROW · ASDF / JKL;
-```
+The complete ANSI map is an anchored overlay inside the focus shell. Expanding it does not move the word track, Prompt, HUD, or shortcut bar.
 
-Labels use the app's existing English UI language and monospace treatment.
+## Compact Strip
 
-### Hands
+The default strip is approximately 48–64px high and contains:
 
-Two translucent “ghost hands” sit over the keyboard:
+- `Finger guide` label;
+- a tactile keycap showing the last accepted physical key, or `F J` at rest;
+- `Pressed F · Recommended: Left index` style copy;
+- a separate modifier line for Shift when needed;
+- a simplified ten-finger outline with primary and modifier fingers visually distinct;
+- a real 44px Expand/Collapse button with `aria-expanded` and `aria-controls`.
 
-- resting palms remain near the home-row position;
-- hand fill stays translucent enough to preserve every key label;
-- a thin outline keeps the hand shape legible against white and soft-paper surfaces;
-- the active finger or fingers become substantially more opaque while the other fingers remain subdued;
-- key labels render above the translucent hand layer.
+The active recommendation is at least 13–14px. Passive labels may use the app's compact monospace scale. Shift uses an informational blue treatment while the primary key uses attention yellow, so the two roles are not conflated.
 
-Each palm remains anchored to its home-row position. It may use a small local offset for a realistic reach, but it must not relocate or jump across the keyboard. The target finger performs the primary extension and press motion.
-
-## Keyboard Scope
+## Full ANSI Map
 
 Use a compact US ANSI QWERTY main typing block:
 
-- `Esc`;
+- `Esc` merged into the number row to avoid a wasteful dedicated row;
 - number and symbol row;
 - letters and punctuation;
 - `Tab`, `Caps`, `Shift`, `Space`, `Enter`, and `Backspace`.
 
-Function keys, navigation clusters, arrow keys, and the numeric keypad are not rendered. `Tab` and `Caps` are present to preserve the recognizable ANSI shape but are not Finger Guide commands.
+Function keys, navigation clusters, arrow keys, and the numeric keypad are excluded. `F` and `J` retain home-row markers. Key labels remain legible and render above the hand layer.
 
-The first version demonstrates:
-
-- letters;
-- digits;
-- punctuation;
-- shifted characters;
-- `Space`;
-- `Backspace`;
-- `Enter`;
-- `Escape`.
-
-It does not choreograph `Ctrl`, `Alt`, `Meta`, or multi-key Practice shortcuts. Those commands remain explained by the existing shortcut and navigation controls.
+Ghost hands are restrained outlines rather than opaque palms. Resting shapes stay subordinate to the keys; only the assigned fingertip or fingertips become prominent. Small reach offsets are illustrative and must not imply anatomical precision.
 
 ## Finger Assignment
 
-Use this fixed mapping:
-
 | Finger | Keys |
 | --- | --- |
-| Left pinky | `Esc`, `` ` ``, `1`, `Q`, `A`, `Z`, left `Shift` |
+| Left little finger | `Esc`, `` ` ``, `1`, `Q`, `A`, `Z`, left `Shift` |
 | Left ring | `2`, `W`, `S`, `X` |
 | Left middle | `3`, `E`, `D`, `C` |
 | Left index | `4`, `5`, `R`, `T`, `F`, `G`, `V`, `B` |
 | Right index | `6`, `7`, `Y`, `U`, `H`, `J`, `N`, `M` |
 | Right middle | `8`, `I`, `K`, `,` |
 | Right ring | `9`, `O`, `L`, `.` |
-| Right pinky | `0`, `-`, `=`, `P`, `[`, `]`, `\`, `;`, `'`, `/`, right `Shift`, `Backspace`, `Enter` |
+| Right little finger | `0`, `-`, `=`, `P`, `[`, `]`, `\`, `;`, `'`, `/`, right `Shift`, `Backspace`, `Enter` |
 | Right thumb | `Space` |
 
-For an uppercase letter or shifted symbol, the character key uses its assigned finger and the opposite hand's pinky demonstrates `Shift`.
+For an uppercase letter or shifted symbol, the character key uses its assigned finger and the opposite hand's little finger uses Shift. The mapping fixes `B` to left index, `6` to right index, and `Space` to right thumb. Unknown physical codes do not animate.
 
-The character key, recommended Shift key, and both assigned fingers become active together.
+## Input And Feedback
 
-The mapping deliberately fixes common variations:
+Use `KeyboardEvent.code` as the physical ANSI position. Key position, legend, and recommendation come only from the fixed mapping and physical Shift state.
 
-- `B` uses the left index finger;
-- `6` uses the right index finger;
-- `Space` uses the right thumb.
+Only supported accepted input/editing keys update the guide:
 
-Unknown and non-ANSI physical codes do not animate.
+- accepted characters, Space, Backspace, Enter, and Escape update it;
+- incorrect accepted characters update it normally;
+- ignored browser/system commands do not;
+- `Ctrl`, `Alt`, `Meta`, AltGraph, and IME composition do not;
+- an input change without a corresponding physical key does not.
 
-## Animation Model
+The latest supported key supersedes the previous one; animations do not queue. Repeated presses still restart tactile compression. After approximately 450ms without another accepted key, the guide returns to the home-row state.
 
-### Accepted Key
+With `prefers-reduced-motion: reduce`, disable press/travel transitions while retaining the static keycap, finger role, and readable recommendation.
 
-For each supported keystroke:
+## Accessibility
 
-1. The active key or keys and recommended finger or fingers become visually prominent.
-2. The active finger or fingers travel or extend toward the key in approximately 150ms.
-3. The key performs the existing 105ms compression near the end of that reach.
-4. The visible label updates to the key and recommended finger assignment.
-
-The guide reuses the existing Practice motion range and key-feedback rhythm. It does not add a second sound system; the current local key sound and mute preference remain authoritative.
-
-### Rapid Input
-
-Animations never queue. A new supported keystroke immediately supersedes the previous target and restarts the motion from the current finger pose.
-
-This latest-key-wins rule prevents the guide from falling behind the learner during fast typing. Repeated presses of the same key must still restart key compression.
-
-### Return To Home Row
-
-During continuous typing, the active finger pose follows the latest supported key. After approximately 450ms without another supported keystroke:
-
-- the active highlight fades;
-- active fingers and any small palm offsets settle back to the `ASDF` / `JKL;` resting pose;
-- the label returns to the home-row message.
-
-There is no looping idle animation.
-
-### Reduced Motion
-
-With `prefers-reduced-motion: reduce`:
-
-- disable every press, travel, return, and opacity transition;
-- keep both palms and fingers in their resting positions;
-- update only the static key highlight, assigned resting finger emphasis, and text label.
-
-The mapping remains understandable without motion.
-
-## Input And State Behavior
-
-Use `KeyboardEvent.code` as the physical ANSI position. Key position, keycap legend, and the guide label all come from the fixed ANSI mapping plus the physical Shift state. Letter legends remain uppercase like their keycaps. Do not use `event.key` as the displayed character because another keyboard layout can assign a different character to the same physical key.
-
-Only supported input and editing keys handled by Practice update the guide:
-
-- ordinary accepted text keystrokes animate;
-- incorrect accepted characters animate normally;
-- ignored browser or system commands do not animate;
-- `Ctrl`, `Alt`, and `Meta` chords do not animate;
-- AltGraph and IME composition do not animate;
-- an `input` change without a corresponding supported physical key does not animate.
-
-Shifted characters show the character finger and the recommended opposite-hand Shift pinky together. The guide recommends the standard chord; it does not claim to detect which physical finger was used.
-
-The correction-mode Space branch currently resolves before the common Practice command path. It must explicitly send the same accepted Space command to the Finger Guide resolver so correction navigation receives the same Space animation as ordinary typing.
-
-The guide stays in place through all Practice states:
-
-- Typing and correction states are fully active.
-- `isPaused`, `isSubmitting`, and `isUpdatingStatus` return the hands home and visually mute the guide, except that an accepted Enter press keeps its static highlight for the minimum hold described below.
-- A `perfect`/Passed result retains the same occupied space, returns home, and visually mutes the guide.
-- `close` or `retry` becomes fully active again when Practice returns to editable correction.
-- Moving to the next SentenceCard resets the guide to home row after any accepted Enter press has remained visible for at least 150ms. This affects only the guide; it must not delay submission or navigation.
-
-## Interaction And Accessibility
-
-- The keyboard and hand artwork use `pointer-events: none`.
-- No rendered key is a button, link, input, or tab stop.
-- Clicking the surrounding non-interactive Practice area continues to focus the existing hidden native input.
-- Only the decorative keyboard and hand structures are hidden from the accessibility tree.
-- The visible key-and-finger label remains ordinary readable text but is not an `aria-live` region; announcing every keystroke would overwhelm screen-reader output.
-- Existing Practice instructions, result announcements, focus rings, shortcut alternatives, and hidden input labeling remain unchanged.
-- Key position, finger emphasis, press state, and the text label accompany color, so yellow is not the only signal.
+- The visually hidden Practice heading remains in the heading hierarchy even though the cockpit has no visible page-level title.
+- The full keyboard and hand artwork are `aria-hidden` and use `pointer-events: none`.
+- The visible recommendation is ordinary readable text, not an `aria-live` region.
+- The Expand/Collapse button is keyboard reachable, at least 44px, and exposes its state.
+- Existing hidden-input labeling, screen-reader instructions, result announcements, focus rings, and button alternatives remain unchanged.
+- Text, position, outline, and role-specific styling accompany color.
+- Expanding/collapsing the visual guide never changes the hidden input's accepted-command behavior.
 
 ## Responsive Behavior
 
-### Desktop And Tablet: Above 700px
+- Above `700px`, show the compact strip unless the persisted mode is `Off`.
+- `Full` and a temporary expansion render as an overlay, not a vertically scaled second stage.
+- At `700px` and below, hide the guide with CSS and preserve the five-button shortcut row.
+- In very short landscape viewports, particularly coarse-pointer devices, hide the guide rather than shrinking labels below legibility.
+- The Practice shell itself is constrained by `100dvh`. Ordinary recall must fit at 1440×900, 1366×768, 1280×720, and 390×844 without page scrolling.
+- Exceptional banners such as Quick Start or checkpoint recovery may make the Practice wrapper internally scrollable; they must not silently clip controls.
 
-- Render the complete compact ANSI guide.
-- Scale the keyboard as one unit within the available Practice width.
-- Preserve legible key labels at the 768px and 1024px checks.
-- Keep hands inside `game-shell`, whose overflow remains clipped.
+## Persistence Boundary
 
-### Short Landscape Viewports
+`fingerGuideMode` is part of the existing device `AppPreferences` record. Adding it does not require a Dexie schema version because the field is not indexed.
 
-- Reduce the guide's height and vertical padding.
-- Keep the complete keyboard and both hands visible.
-- Do not remove Prompt, HUD, or any of the five shortcut actions.
-- Preserve the existing minimum heights of the other Practice rows. The workspace may scroll vertically when every stable row cannot fit in one short viewport.
+- Existing IndexedDB rows missing or containing an invalid value normalize to `auto`.
+- Existing v1/v2 full backups may omit the field and normalize to `auto`.
+- New exports include the field; invalid backup values are rejected.
+- The Settings save flow keeps its existing optimistic state, failure rollback, and Retry behavior.
 
-### Mobile: 700px And Below
-
-- Keep the component mounted and hide it with the existing `@media (max-width: 700px)` CSS breakpoint. Do not add viewport JavaScript or `matchMedia` state.
-- Do not add a replacement compact hint, toggle, empty row, or stored preference.
-- Preserve the existing mobile Practice layout and five-button shortcut bar.
-
-## Minimal Component Boundary
-
-Keep this feature in `src/presentation`; it does not require domain, application, infrastructure, or persistence changes.
-
-The smallest maintainable implementation is:
-
-1. one pure Finger Guide resolver under `src/presentation/keyboard`, with one focused test file. It receives a minimal keyboard-event snapshot plus the accepted `PracticeKeyCommand | null`, filters unsupported modifiers/composition, and returns the ANSI key position and finger assignment or `null`;
-2. one `FingerGuide` presentation component that renders the keyboard, hands, label, and state classes;
-3. minimal `PracticeWorkbench` wiring that retains an independent `{ stroke, pulse }` value and resets it on item/state changes. Do not reuse `useKeyFeedback.keyPulse`, which also changes for sounds, buttons, and non-typing commands;
-4. styles added to the existing Practice stylesheet.
-
-Use inline vector markup or CSS for the hands. Do not add an animation, graphics, keyboard-layout, or state-management dependency.
+Finger movement remains presentation-only. The resolver receives the accepted command snapshot and returns a neutral display assignment; it never receives expected text, target position, evaluation status, or scheduling state.
 
 ## Verification
 
-Automated checks:
+Automated checks cover:
 
-- table-driven mapping for every supported ANSI `KeyboardEvent.code`;
-- fixed assignments for `B`, `6`, and `Space`;
-- opposite-hand Shift for left- and right-hand characters;
-- `Backspace`, `Enter`, and `Escape`;
-- ignored unknown codes, `Ctrl` / `Alt` / `Meta` / AltGraph chords, and IME composition;
-- accepted correction-mode Space input.
+- complete ANSI row data with merged Esc row;
+- fixed assignments and opposite-hand Shift;
+- ignored modifiers, unknown codes, and IME;
+- `Off`, compact `Auto`, expanded `Full`, and muted home-row rendering;
+- preference persistence, rollback, legacy row normalization, and old backup compatibility;
+- one-screen ordinary Practice at the four target viewports;
+- First Exposure action footer and shortcuts remaining visible while details scroll;
+- reduced motion, 700/701 behavior, and short-landscape hiding.
 
-Manual browser checks:
-
-- normal, incorrect, shifted, repeated, and rapid typing;
-- repeated presses of the same key restart compression;
-- Enter remains visible long enough to identify before a next-card reset;
-- pause, correction, passed, and next-card transitions;
-- paste and IME input without fabricated motion;
-- key sounds on and off;
-- reduced-motion behavior;
-- hidden at 375px and 700px;
-- complete and legible immediately above the breakpoint at 701px and 720px;
-- complete and legible at 768px, 1024px, and 1440px;
-- compressed but complete in a short landscape viewport;
-- keyboard-only Practice focus and all existing shortcut controls.
-
-Required repository checks for implementation:
-
-- `npm test`
-- `npm run typecheck`
-- `npm run build`
-
-## Non-Goals
-
-- Predicting or revealing the next Target Sentence character.
-- Detecting the learner's real finger or hand.
-- Finger accuracy, typing analytics, telemetry, history, or review scheduling.
-- Click-to-type on-screen keys.
-- Mobile Finger Guide UI.
-- Keyboard layouts other than US ANSI QWERTY.
-- Practice shortcut choreography.
-- Function keys, navigation clusters, arrow keys, or a numeric keypad.
-- Realistic 3D hands, remote art assets, idle animation, or a new animation dependency.
+Manual checks include rapid/repeated typing, wrong input, correction Space, Enter hold, Answer show/hide, pause/result transitions, keyboard-only focus, key sound on/off, and full-map expansion at desktop/tablet widths.

@@ -6,9 +6,9 @@ import type {
   CourseCategory,
   LearningPath,
 } from "../../domain/curriculum/Course";
+import type { SentenceLearningState } from "../../domain/learning/SentenceLearningState";
 import { DEFAULT_COURSE_CATALOG_QUERY } from "../../domain/curriculum/queryCourseCatalog";
-import type { ReviewState } from "../../domain/review/ReviewState";
-import { CoursesView } from "./CoursesView";
+import { CourseLoadMoreButton, CourseReplayButton, CoursesView } from "./CoursesView";
 
 const learningPaths: LearningPath[] = [
   {
@@ -101,9 +101,22 @@ const cards: SentenceCard[] = [
   card("card-3", "VOA Learning English — Lesson 1"),
 ];
 
-const reviewStates: ReviewState[] = [reviewState("card-1"), reviewState("card-3")];
+const learningStates: SentenceLearningState[] = [learningState("card-1"), learningState("card-3")];
 
 describe("CoursesView", () => {
+  it("replays the full course instead of only its first lesson", () => {
+    const onReplayCourse = vi.fn();
+    const button = CourseReplayButton({
+      courseId: "course-1",
+      courseTitle: "Conversation Basics",
+      onReplayCourse,
+    }) as unknown as { props: { onClick(): void } };
+
+    button.props.onClick();
+
+    expect(onReplayCourse).toHaveBeenCalledWith("course-1");
+  });
+
   it("shows compact course summaries without rendering course details", () => {
     const html = renderToStaticMarkup(
       <CoursesView
@@ -113,11 +126,14 @@ describe("CoursesView", () => {
         courses={courses}
         cards={cards}
         selectedCourseId={null}
-        reviewStates={reviewStates}
+        learningStates={learningStates}
         onCatalogQueryChange={vi.fn()}
+        onResultLimitChange={vi.fn()}
         onStartLesson={vi.fn()}
+        onReplayCourse={vi.fn()}
         onReplayLesson={vi.fn()}
         onSelectCourse={vi.fn()}
+        resultLimit={24}
       />,
     );
 
@@ -137,11 +153,14 @@ describe("CoursesView", () => {
         courses={courses}
         cards={cards}
         selectedCourseId="course-1"
-        reviewStates={reviewStates}
+        learningStates={learningStates}
         onCatalogQueryChange={vi.fn()}
+        onResultLimitChange={vi.fn()}
         onStartLesson={vi.fn()}
+        onReplayCourse={vi.fn()}
         onReplayLesson={vi.fn()}
         onSelectCourse={vi.fn()}
+        resultLimit={24}
       />,
     );
 
@@ -167,11 +186,14 @@ describe("CoursesView", () => {
         courses={courses}
         cards={cards}
         selectedCourseId={null}
-        reviewStates={reviewStates}
+        learningStates={learningStates}
         onCatalogQueryChange={vi.fn()}
+        onResultLimitChange={vi.fn()}
         onStartLesson={vi.fn()}
+        onReplayCourse={vi.fn()}
         onReplayLesson={vi.fn()}
         onSelectCourse={vi.fn()}
+        resultLimit={24}
       />,
     );
 
@@ -191,11 +213,14 @@ describe("CoursesView", () => {
         courses={courses}
         cards={cards}
         selectedCourseId={null}
-        reviewStates={[...reviewStates, reviewState("card-2")]}
+        learningStates={[...learningStates, learningState("card-2")]}
         onCatalogQueryChange={vi.fn()}
+        onResultLimitChange={vi.fn()}
         onStartLesson={vi.fn()}
+        onReplayCourse={vi.fn()}
         onReplayLesson={vi.fn()}
         onSelectCourse={vi.fn()}
+        resultLimit={24}
       />,
     );
 
@@ -219,11 +244,14 @@ describe("CoursesView", () => {
         courses={[...courses, workCourse]}
         cards={cards}
         selectedCourseId={null}
-        reviewStates={reviewStates}
+        learningStates={learningStates}
         onCatalogQueryChange={vi.fn()}
+        onResultLimitChange={vi.fn()}
         onStartLesson={vi.fn()}
+        onReplayCourse={vi.fn()}
         onReplayLesson={vi.fn()}
         onSelectCourse={vi.fn()}
+        resultLimit={24}
       />,
     );
 
@@ -256,11 +284,14 @@ describe("CoursesView", () => {
         courses={manyCourses}
         cards={[]}
         selectedCourseId={null}
-        reviewStates={[]}
+        learningStates={[]}
         onCatalogQueryChange={vi.fn()}
+        onResultLimitChange={vi.fn()}
         onStartLesson={vi.fn()}
+        onReplayCourse={vi.fn()}
         onReplayLesson={vi.fn()}
         onSelectCourse={vi.fn()}
+        resultLimit={24}
       />,
     );
 
@@ -268,6 +299,45 @@ describe("CoursesView", () => {
     expect(html).not.toContain('aria-label="View course Bulk Course 25"');
     expect(html).toContain("Showing 24 of 25 courses");
     expect(html).toContain("Load more");
+  });
+
+  it("restores a controlled expanded catalog window and requests the next window", () => {
+    const manyCourses = Array.from({ length: 49 }, (_, index) => ({
+      ...workCourse,
+      id: `window-course-${index + 1}`,
+      title: `Window Course ${String(index + 1).padStart(2, "0")}`,
+    }));
+    const html = renderToStaticMarkup(
+      <CoursesView
+        catalogQuery={DEFAULT_COURSE_CATALOG_QUERY}
+        categories={categories}
+        learningPaths={[]}
+        courses={manyCourses}
+        cards={[]}
+        selectedCourseId={null}
+        learningStates={[]}
+        onCatalogQueryChange={vi.fn()}
+        onResultLimitChange={vi.fn()}
+        onStartLesson={vi.fn()}
+        onReplayCourse={vi.fn()}
+        onReplayLesson={vi.fn()}
+        onSelectCourse={vi.fn()}
+        resultLimit={48}
+      />,
+    );
+
+    expect(html).toContain('aria-label="View course Window Course 48"');
+    expect(html).not.toContain('aria-label="View course Window Course 49"');
+    expect(html).toContain("Showing 48 of 49 courses");
+
+    const onResultLimitChange = vi.fn();
+    const button = CourseLoadMoreButton({
+      currentLimit: 48,
+      onResultLimitChange,
+      totalResults: 49,
+    }) as unknown as { props: { onClick(): void } };
+    button.props.onClick();
+    expect(onResultLimitChange).toHaveBeenCalledWith(49);
   });
 
   it("offers a recoverable empty result with the active criteria", () => {
@@ -283,11 +353,14 @@ describe("CoursesView", () => {
         courses={[...courses, workCourse]}
         cards={cards}
         selectedCourseId={null}
-        reviewStates={reviewStates}
+        learningStates={learningStates}
         onCatalogQueryChange={vi.fn()}
+        onResultLimitChange={vi.fn()}
         onStartLesson={vi.fn()}
+        onReplayCourse={vi.fn()}
         onReplayLesson={vi.fn()}
         onSelectCourse={vi.fn()}
+        resultLimit={24}
       />,
     );
 
@@ -307,11 +380,14 @@ describe("CoursesView", () => {
         courses={courses}
         cards={cards}
         selectedCourseId="removed-course"
-        reviewStates={reviewStates}
+        learningStates={learningStates}
         onCatalogQueryChange={vi.fn()}
+        onResultLimitChange={vi.fn()}
         onStartLesson={vi.fn()}
+        onReplayCourse={vi.fn()}
         onReplayLesson={vi.fn()}
         onSelectCourse={vi.fn()}
+        resultLimit={24}
       />,
     );
 
@@ -334,13 +410,11 @@ function card(id: string, source: string): SentenceCard {
   };
 }
 
-function reviewState(cardId: string): ReviewState {
+function learningState(cardId: string): SentenceLearningState {
   return {
     cardId,
-    stage: 1,
-    dueAt: "2026-07-20T00:00:00.000Z",
-    lastReviewedAt: "2026-07-19T00:00:00.000Z",
-    streak: 1,
-    lapseCount: 0,
+    introducedAt: "2026-07-19T00:00:00.000Z",
+    firstPassedAt: "2026-07-20T00:00:00.000Z",
+    firstPassSource: "independent-recall",
   };
 }

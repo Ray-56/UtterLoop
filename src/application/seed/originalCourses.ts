@@ -1,5 +1,6 @@
 import type { SentenceCard } from "../../domain/content/SentenceCard";
 import type { ContentLicense, Course } from "../../domain/curriculum/Course";
+import { starterLearningSupportByCardId } from "./starterLearningSupport";
 
 const originalContentSource = "UtterLoop Original";
 const seedCreatedAt = "2026-07-19T00:00:00.000Z";
@@ -28,7 +29,7 @@ export const originalCourses: Course[] = [
       kind: "original",
       name: "UtterLoop",
     },
-    revision: 2,
+    revision: 4,
     license: CC0_CONTENT_LICENSE,
     units: [
       {
@@ -40,13 +41,13 @@ export const originalCourses: Course[] = [
             id: "sf-u1-l1",
             title: "Meet Someone New",
             objective: "Greet someone and share simple personal facts and a learning goal.",
-            cardIds: ["sf-001", "sf-002", "sf-003", "sf-004", "sf-005"],
+            cardIds: ["sf-001", "sf-002", "sf-003", "sf-005", "sf-004"],
           },
           {
             id: "sf-u1-l2",
             title: "A Simple Daily Routine",
             objective: "Recall present-simple sentences about recurring parts of a day.",
-            cardIds: ["sf-006", "sf-007", "sf-008", "sf-009", "sf-010"],
+            cardIds: ["sf-006", "sf-007", "sf-010", "sf-008", "sf-009"],
           },
         ],
       },
@@ -65,7 +66,7 @@ export const originalCourses: Course[] = [
             id: "sf-u2-l2",
             title: "Keep the Conversation Clear",
             objective: "Ask for repetition or meaning and confirm what you understood.",
-            cardIds: ["sf-016", "sf-017", "sf-018", "sf-019", "sf-020"],
+            cardIds: ["sf-017", "sf-016", "sf-018", "sf-019", "sf-020"],
           },
         ],
       },
@@ -387,6 +388,8 @@ function originalCard(
   tags: string[],
   acceptableAnswers: string[] = [],
 ): SentenceCard {
+  const learningSupport = starterLearningSupportByCardId[id];
+
   return {
     id,
     english,
@@ -394,7 +397,8 @@ function originalCard(
     source: originalContentSource,
     tags,
     acceptableAnswers,
+    ...(learningSupport ? { learningSupport } : {}),
     createdAt: seedCreatedAt,
-    updatedAt: seedCreatedAt,
+    updatedAt: learningSupport ? "2026-08-02T00:00:00.000Z" : seedCreatedAt,
   };
 }

@@ -1,4 +1,5 @@
 import type { SentenceCard } from "../content/SentenceCard";
+import { validateSentenceLearningSupport } from "../content/validateSentenceLearningSupport";
 import type { CefrLevel, Course, CourseCategory, LearningPath } from "./Course";
 
 export interface CourseCatalog {
@@ -110,6 +111,8 @@ export function validateCourseCatalog(catalog: CourseCatalog): void {
     requireText(card.english, `SentenceCard ${card.id} target sentence`);
     requireText(card.prompt, `SentenceCard ${card.id} prompt`);
     requireText(card.source, `SentenceCard ${card.id} source`);
+
+    validateSentenceLearningSupport(card);
   }
 }
 

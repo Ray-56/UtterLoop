@@ -36,6 +36,41 @@ describe("buildAttemptPreview", () => {
     expect(preview.isComplete).toBe(true);
   });
 
+  it("keeps a typed contraction in one visible word slot without changing scoring", () => {
+    const contractionCard = { ...card, english: "I'm new to this class." };
+    const answer = "I'm new to this class.";
+    const preview = buildAttemptPreview(contractionCard, answer);
+    const evaluation = evaluateAttempt(contractionCard, {
+      cardId: card.id,
+      answer,
+      submittedAt: "2026-07-19T00:00:00.000Z",
+      answerWasRevealed: false,
+      hadEdits: false,
+      audioPlayCount: 0,
+      durationMs: 1000,
+    });
+    const evaluatedPreview = buildEvaluationPreview(contractionCard, evaluation, answer);
+
+    expect(preview.tokens).toHaveLength(5);
+    expect(preview.tokens[0]).toMatchObject({
+      expected: "i'm",
+      typed: "i'm",
+      status: "matched",
+    });
+    expect(evaluation.outcome).toBe("perfect");
+    expect(evaluatedPreview.tokens).toHaveLength(5);
+    expect(evaluatedPreview.tokens.every((token) => token.status === "matched")).toBe(true);
+
+    const expandedAnswer = "I am new to this class.";
+    const expandedPreview = buildEvaluationPreview(
+      contractionCard,
+      evaluation,
+      expandedAnswer,
+    );
+
+    expect(expandedPreview.tokens.every((token) => token.status === "matched")).toBe(true);
+  });
+
   it("recognizes a shorter acceptable answer as complete", () => {
     const preview = buildAttemptPreview(card, "I can finish it today");
 
@@ -72,7 +107,7 @@ describe("buildAttemptPreview", () => {
       durationMs: 1000,
     });
 
-    const preview = buildEvaluationPreview(card, evaluation);
+    const preview = buildEvaluationPreview(card, evaluation, "I really can finish it today");
 
     expect(evaluation.acceptedAnswer).toBe("I can finish it today.");
     expect(preview.tokens.map(({ typed, status, typedIndex }) => ({ typed, status, typedIndex }))).toEqual([
@@ -102,7 +137,7 @@ describe("buildAttemptPreview", () => {
       durationMs: 1000,
     });
 
-    const preview = buildEvaluationPreview(card, evaluation);
+    const preview = buildEvaluationPreview(card, evaluation, "I can it today");
 
     expect(preview.tokens.map(({ expected, typed, status, typedIndex }) => ({
       expected,
@@ -136,7 +171,11 @@ describe("buildAttemptPreview", () => {
       audioPlayCount: 0,
       durationMs: 1000,
     });
-    const draft = buildCorrectionDraft(buildEvaluationPreview(correctionCard, evaluation));
+    const draft = buildCorrectionDraft(buildEvaluationPreview(
+      correctionCard,
+      evaluation,
+      "I really could finish those today",
+    ));
 
     expect(evaluation.acceptedAnswer).toBe("I can finish it today.");
     expect(draft.answer).toBe(

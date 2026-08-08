@@ -1,4 +1,5 @@
-import type { ComponentType, ReactNode } from "react";
+import { useEffect, useRef, type ComponentType, type ReactNode } from "react";
+import { RefreshCcw, XCircle } from "lucide-react";
 import type { AppView } from "../App";
 import type { TrainingSnapshot } from "../../application/use-cases/getTrainingSnapshot";
 
@@ -10,20 +11,38 @@ interface NavigationItem {
 
 interface ShellProps {
   activeView: AppView;
+  error: string | null;
   navigation: NavigationItem[];
   onNavigate(view: AppView): void;
+  onRetryStartup(): void;
   snapshot: TrainingSnapshot | null;
-  status: "loading" | "ready" | "error";
+  status: "loading" | "ready" | "write-error" | "error";
   children: ReactNode;
 }
 
-export function Shell({ activeView, navigation, onNavigate, snapshot, status, children }: ShellProps) {
+export function Shell({
+  activeView,
+  children,
+  navigation,
+  onNavigate,
+  onRetryStartup,
+  snapshot,
+  status,
+}: ShellProps) {
   const dueCount = snapshot?.queue.due.length ?? 0;
   const totalCards = snapshot?.cards.length ?? 0;
   const activeIndex = navigation.findIndex((item) => item.id === activeView) + 1;
+  const headingRef = useRef<HTMLHeadingElement>(null);
+
+  useEffect(() => {
+    headingRef.current?.focus({ preventScroll: true });
+  }, [activeView]);
 
   return (
-    <div className="app-shell">
+    <div
+      className={`app-shell app-shell-${activeView}`}
+      data-storage-status={status}
+    >
       <aside className="sidebar" aria-label="Primary">
         <div className="brand-lockup">
           <div className="brand-mark" aria-hidden="true">
@@ -70,22 +89,41 @@ export function Shell({ activeView, navigation, onNavigate, snapshot, status, ch
       </aside>
 
       <main className={`workspace workspace-${activeView}`}>
-        <header className="workspace-header">
-          <div className="workspace-heading">
-            <span className="view-number" aria-hidden="true">
-              {String(activeIndex).padStart(2, "0")}
-            </span>
-            <div>
-              <p className="eyebrow">{labelForView(activeView)}</p>
-              <h2>{titleForView(activeView)}</h2>
+        {activeView === "practice" ? (
+          <h2 className="sr-only" ref={headingRef} tabIndex={-1}>
+            {titleForView(activeView)}
+          </h2>
+        ) : (
+          <header className="workspace-header">
+            <div className="workspace-heading">
+              <span className="view-number" aria-hidden="true">
+                {String(activeIndex).padStart(2, "0")}
+              </span>
+              <div>
+                <p className="eyebrow">{labelForView(activeView)}</p>
+                <h2 ref={headingRef} tabIndex={-1}>{titleForView(activeView)}</h2>
+              </div>
             </div>
-          </div>
-          <span className={`sync-pill sync-pill-${status}`}>
-            <span aria-hidden="true" />
-            {statusLabel(status)}
-          </span>
-        </header>
-        {children}
+            <span className={`sync-pill sync-pill-${status}`}>
+              <span aria-hidden="true" />
+              {statusLabel(status)}
+            </span>
+          </header>
+        )}
+        {status === "error" ? (
+          <section className="startup-error" aria-labelledby="startup-error-title" role="alert">
+            <XCircle aria-hidden="true" size={28} />
+            <div>
+              <p className="eyebrow">Storage startup</p>
+              <h3 id="startup-error-title">Local data could not be loaded</h3>
+              <p>UtterLoop could not access local storage. Retry to reconnect your on-device data.</p>
+            </div>
+            <button className="primary-button" onClick={onRetryStartup} type="button">
+              <RefreshCcw aria-hidden="true" size={17} />
+              Retry startup
+            </button>
+          </section>
+        ) : children}
       </main>
     </div>
   );
@@ -102,7 +140,7 @@ function titleForView(view: AppView): string {
     case "progress":
       return "Learning progress";
     case "settings":
-      return "Data & settings";
+      return "Preferences & data";
   }
 }
 
@@ -117,7 +155,7 @@ function labelForView(view: AppView): string {
     case "progress":
       return "Signals";
     case "settings":
-      return "Local first";
+      return "Your studio";
   }
 }
 
@@ -127,6 +165,8 @@ function statusLabel(status: ShellProps["status"]): string {
       return "Loading";
     case "ready":
       return "Saved locally";
+    case "write-error":
+      return "Save needs attention";
     case "error":
       return "Storage error";
   }

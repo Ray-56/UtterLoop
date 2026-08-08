@@ -58,8 +58,8 @@ function key(
 }
 
 export const FINGER_GUIDE_ROWS: readonly (readonly FingerGuideKeyDefinition[])[] = [
-  [key("Escape", "Esc", leftPinky)],
   [
+    key("Escape", "Esc", leftPinky),
     key("Backquote", "`", leftPinky, 1, "~"),
     key("Digit1", "1", leftPinky, 1, "!"),
     key("Digit2", "2", leftRing, 1, "@"),

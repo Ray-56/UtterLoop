@@ -42,6 +42,7 @@ describe("buildLessonPracticeQueue", () => {
       course,
       "lesson-1",
       cards,
+      [learningState("card-1")],
       [
         reviewState("card-2", 0, "2026-07-20T00:00:00.000Z"),
         reviewState("card-1", 1, "2026-07-20T00:00:00.000Z"),
@@ -59,6 +60,7 @@ describe("buildLessonPracticeQueue", () => {
       course,
       "lesson-1",
       cards,
+      [],
       [reviewState("card-2", 1, "2026-07-20T00:00:00.000Z")],
       now,
       "replay",
@@ -72,6 +74,7 @@ describe("buildLessonPracticeQueue", () => {
       course,
       "lesson-1",
       cards,
+      cards.map((item) => learningState(item.id)),
       cards.map((item) => reviewState(item.id, 1, "2026-07-20T00:00:00.000Z")),
       now,
       "learn",
@@ -79,6 +82,47 @@ describe("buildLessonPracticeQueue", () => {
 
     expect(queue.items).toEqual([]);
     expect(queue.completed).toBe(true);
+  });
+
+  it("defers a future-due Independent-ready card across rounds without completing the Lesson", () => {
+    const queue = buildLessonPracticeQueue(
+      course,
+      "lesson-1",
+      cards,
+      [
+        readyIndependentState("card-2"),
+        learningState("card-1"),
+        learningState("card-3"),
+      ],
+      [reviewState("card-2", 0, "2026-07-19T00:10:00.000Z")],
+      now,
+      "learn",
+    );
+
+    expect(queue).toEqual({ items: [], completed: false });
+  });
+
+  it("preserves Lesson order for other acquisition cards while applying the due gate", () => {
+    const queue = buildLessonPracticeQueue(
+      course,
+      "lesson-1",
+      cards,
+      [
+        readyIndependentState("card-2"),
+        needsGuidedState("card-1"),
+        readyIndependentState("card-3"),
+      ],
+      [
+        reviewState("card-2", 0, "2026-07-19T00:10:00.000Z"),
+        reviewState("card-1", 0, "2026-07-19T00:10:00.000Z"),
+        reviewState("card-3", 0, now.toISOString()),
+      ],
+      now,
+      "learn",
+    );
+
+    expect(queue.items.map((item) => item.card.id)).toEqual(["card-1", "card-3"]);
+    expect(queue.completed).toBe(false);
   });
 });
 
@@ -92,6 +136,31 @@ function card(id: string): SentenceCard {
     acceptableAnswers: [],
     createdAt: "2026-07-19T00:00:00.000Z",
     updatedAt: "2026-07-19T00:00:00.000Z",
+  };
+}
+
+function learningState(cardId: string) {
+  return {
+    cardId,
+    introducedAt: "2026-07-19T00:00:00.000Z",
+    firstPassedAt: "2026-07-19T01:00:00.000Z",
+    firstPassSource: "independent-recall" as const,
+  };
+}
+
+function readyIndependentState(cardId: string) {
+  return {
+    cardId,
+    introducedAt: "2026-07-18T00:00:00.000Z",
+    acquisitionStatus: "ready-independent" as const,
+  };
+}
+
+function needsGuidedState(cardId: string) {
+  return {
+    cardId,
+    introducedAt: "2026-07-18T00:00:00.000Z",
+    acquisitionStatus: "needs-guided" as const,
   };
 }
 
