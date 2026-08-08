@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ReviewState } from "../review/ReviewState";
+import type { SentenceLearningState } from "../learning/SentenceLearningState";
 import type { Course, CourseCategory, LearningPath } from "./Course";
 import { buildCourseCatalogItems } from "./buildCourseCatalogItems";
 
@@ -45,7 +45,7 @@ describe("buildCourseCatalogItems", () => {
       categories,
       courses,
       learningPaths,
-      reviewStates: [],
+      learningStates: [],
     });
 
     expect(items.map((item) => item.course.id)).toEqual([
@@ -62,7 +62,7 @@ describe("buildCourseCatalogItems", () => {
       categories,
       courses,
       learningPaths,
-      reviewStates: [],
+      learningStates: [],
     });
 
     expect(items.find((item) => item.course.id === "course-b")).toMatchObject({
@@ -77,12 +77,12 @@ describe("buildCourseCatalogItems", () => {
   });
 
   it("derives category, outline counts, and course progress", () => {
-    const reviewStates: ReviewState[] = [reviewState("a-1")];
+    const learningStates: SentenceLearningState[] = [learningState("a-1")];
     const items = buildCourseCatalogItems({
       categories,
       courses,
       learningPaths,
-      reviewStates,
+      learningStates,
     });
 
     expect(items.find((item) => item.course.id === "course-a")).toMatchObject({
@@ -104,7 +104,7 @@ describe("buildCourseCatalogItems", () => {
         categories: [],
         courses: [courses[0]],
         learningPaths: [],
-        reviewStates: [],
+        learningStates: [],
       }),
     ).toThrow("everyday");
   });
@@ -146,13 +146,11 @@ function course(
   };
 }
 
-function reviewState(cardId: string): ReviewState {
+function learningState(cardId: string): SentenceLearningState {
   return {
     cardId,
-    stage: 1,
-    dueAt: "2026-07-20T00:00:00.000Z",
-    lastReviewedAt: "2026-07-19T00:00:00.000Z",
-    streak: 1,
-    lapseCount: 0,
+    introducedAt: "2026-07-19T00:00:00.000Z",
+    firstPassedAt: "2026-07-20T00:00:00.000Z",
+    firstPassSource: "independent-recall",
   };
 }

@@ -5,6 +5,10 @@ import type {
   LearningPath,
 } from "../../domain/curriculum/Course";
 import type { CourseCatalog } from "../../domain/curriculum/validateCourseCatalog";
+import {
+  additionalCourseCards,
+  additionalCourses,
+} from "./additionalCourses";
 import { originalCourseCards, originalCourses } from "./originalCourses";
 import { voaCourse, voaCourseCards } from "./voaCourse";
 
@@ -26,19 +30,27 @@ export const defaultCourseCategories: CourseCategory[] = [
       "Updates, requests, planning, and feedback for shared work and study.",
     sortOrder: 1,
   },
+  {
+    id: "travel-and-services",
+    title: "Travel & Services",
+    description:
+      "Directions, transport, accommodation, and practical help away from home.",
+    sortOrder: 2,
+  },
 ];
 
 export const defaultCourses: Course[] = [
   starterFoundations,
   voaCourse,
   workStudyEssentials,
+  ...additionalCourses,
 ];
 
 export const defaultLearningPath: LearningPath = {
   id: "utterloop-core-path",
   title: "Everyday Output Path",
   description:
-    "A recommended path from everyday foundations through guided beginner practice to work and study communication.",
+    "A recommended path from everyday foundations through work, travel, social conversation, and confident decision-making.",
   courseIds: defaultCourses.map((course) => course.id),
 };
 
@@ -60,7 +72,9 @@ function cardsForCourse(course: Course): SentenceCard[] {
     ),
   );
   const availableCards =
-    course.id === voaCourse.id ? voaCourseCards : originalCourseCards;
+    course.id === voaCourse.id
+      ? voaCourseCards
+      : [...originalCourseCards, ...additionalCourseCards];
 
   return availableCards.filter((card) => cardIds.has(card.id));
 }

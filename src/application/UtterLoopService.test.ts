@@ -8,6 +8,8 @@ import type {
 import type { CourseCatalog } from "../domain/curriculum/validateCourseCatalog";
 import type { PracticeLogEntry } from "../domain/practice/PracticeLogEntry";
 import type { ReviewState } from "../domain/review/ReviewState";
+import type { SentenceLearningState } from "../domain/learning/SentenceLearningState";
+import type { AtomicPracticeWrite } from "./ports/TrainingRepository";
 import type { TrainingRepository } from "./ports/TrainingRepository";
 import { defaultCatalog } from "./seed/defaultCatalog";
 import {
@@ -114,6 +116,18 @@ class BundleRepository implements TrainingRepository {
 
   async saveReviewState(): Promise<void> {}
 
+  async listSentenceLearningStates(): Promise<SentenceLearningState[]> { return []; }
+
+  async getSentenceLearningState(): Promise<SentenceLearningState | undefined> { return undefined; }
+
+  async saveSentenceLearningState(): Promise<void> {}
+
+  async saveLearningAndReviewState(): Promise<void> {}
+
+  async getPracticeLogEntry(): Promise<PracticeLogEntry | undefined> { return undefined; }
+
+  async savePracticeWrite(write: AtomicPracticeWrite) { return { entry: write.logEntry, created: true }; }
+
   async addPracticeLog(): Promise<void> {}
 
   async savePracticeResult(): Promise<void> {}
@@ -121,6 +135,12 @@ class BundleRepository implements TrainingRepository {
   async listPracticeLog(): Promise<PracticeLogEntry[]> {
     return [];
   }
+
+  async listRecentPracticeActivity() { return { entries: [], limit: 500, totalEntries: 0, isTruncated: false }; }
+
+  async getPracticeStatistics(): Promise<never> { throw new Error("Not used by this fixture."); }
+
+  async listAllPracticeLog(): Promise<PracticeLogEntry[]> { return []; }
 
   async listVocabularyEntries() {
     return [];
@@ -137,6 +157,20 @@ class BundleRepository implements TrainingRepository {
   async saveCourseCatalog(catalog: CourseCatalog): Promise<void> {
     this.savedCatalogs.push(catalog);
   }
+
+  async getAppPreferences() { return undefined; }
+
+  async saveAppPreferences() {}
+
+  async getPracticeSessionCheckpoint() { return undefined; }
+
+  async savePracticeSessionCheckpoint() {}
+
+  async deletePracticeSessionCheckpoint() {}
+
+  async readFullBackup(): Promise<never> { throw new Error("Not used by this fixture."); }
+
+  async replaceAllData() {}
 
   async clearLearningProgress(): Promise<void> {}
 

@@ -12,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import type { SentenceCard } from "../../domain/content/SentenceCard";
+import type { SentenceLearningState } from "../../domain/learning/SentenceLearningState";
 import type {
   Course,
   CourseCategory,
@@ -30,23 +31,24 @@ import {
   queryCourseCatalog,
   type CourseCatalogQuery,
 } from "../../domain/curriculum/queryCourseCatalog";
-import type { ReviewState } from "../../domain/review/ReviewState";
+import { DEFAULT_COURSE_RESULT_LIMIT } from "../appUrlState";
 
 export interface CoursesViewProps {
   categories: CourseCategory[];
   learningPaths: LearningPath[];
   courses: Course[];
   cards: SentenceCard[];
-  reviewStates: ReviewState[];
+  learningStates: SentenceLearningState[];
   catalogQuery: CourseCatalogQuery;
   selectedCourseId: CourseId | null;
   onCatalogQueryChange(query: CourseCatalogQuery): void;
+  onResultLimitChange(resultLimit: number): void;
   onSelectCourse(courseId: CourseId | null): void;
   onStartLesson(courseId: CourseId, lessonId: CourseLessonId): void;
+  onReplayCourse(courseId: CourseId): void;
   onReplayLesson(courseId: CourseId, lessonId: CourseLessonId): void;
+  resultLimit: number;
 }
-
-const COURSE_RESULT_PAGE_SIZE = 24;
 
 export function CoursesView(props: CoursesViewProps) {
   const items = useMemo(
@@ -55,21 +57,15 @@ export function CoursesView(props: CoursesViewProps) {
         categories: props.categories,
         courses: props.courses,
         learningPaths: props.learningPaths,
-        reviewStates: props.reviewStates,
+        learningStates: props.learningStates,
       }),
-    [props.categories, props.courses, props.learningPaths, props.reviewStates],
+    [props.categories, props.courses, props.learningPaths, props.learningStates],
   );
   const results = useMemo(
     () => queryCourseCatalog(items, props.catalogQuery),
     [items, props.catalogQuery],
   );
-  const queryKey = catalogQueryKey(props.catalogQuery);
-  const [resultWindow, setResultWindow] = useState({
-    queryKey,
-    count: COURSE_RESULT_PAGE_SIZE,
-  });
-  const visibleCount =
-    resultWindow.queryKey === queryKey ? resultWindow.count : COURSE_RESULT_PAGE_SIZE;
+  const visibleCount = Math.max(DEFAULT_COURSE_RESULT_LIMIT, props.resultLimit);
   const visibleResults = results.slice(0, visibleCount);
   const catalogReturnRef = useRef<{ courseId: CourseId; scrollY: number } | null>(null);
   const previousSelectedCourseIdRef = useRef(props.selectedCourseId);
@@ -113,6 +109,7 @@ export function CoursesView(props: CoursesViewProps) {
         cards={props.cards}
         item={selectedItem}
         key={selectedItem.course.id}
+        onReplayCourse={props.onReplayCourse}
         onReplayLesson={props.onReplayLesson}
         onSelectCourse={selectCourse}
         onStartLesson={props.onStartLesson}
@@ -174,22 +171,37 @@ export function CoursesView(props: CoursesViewProps) {
             {results.length === 1 ? "course" : "courses"}
           </p>
           {visibleResults.length < results.length && (
-            <button
-              className="secondary-button"
-              onClick={() =>
-                setResultWindow({
-                  queryKey,
-                  count: Math.min(visibleCount + COURSE_RESULT_PAGE_SIZE, results.length),
-                })
-              }
-              type="button"
-            >
-              Load more
-            </button>
+            <CourseLoadMoreButton
+              currentLimit={visibleCount}
+              onResultLimitChange={props.onResultLimitChange}
+              totalResults={results.length}
+            />
           )}
         </div>
       )}
     </section>
+  );
+}
+
+export function CourseLoadMoreButton({
+  currentLimit,
+  onResultLimitChange,
+  totalResults,
+}: {
+  currentLimit: number;
+  onResultLimitChange(resultLimit: number): void;
+  totalResults: number;
+}) {
+  return (
+    <button
+      className="secondary-button"
+      onClick={() => onResultLimitChange(
+        Math.min(currentLimit + DEFAULT_COURSE_RESULT_LIMIT, totalResults),
+      )}
+      type="button"
+    >
+      Load more
+    </button>
   );
 }
 
@@ -464,12 +476,14 @@ function RecommendedContinue({
 function CourseDetail({
   cards,
   item,
+  onReplayCourse,
   onReplayLesson,
   onSelectCourse,
   onStartLesson,
 }: {
   cards: SentenceCard[];
   item: CourseCatalogItem;
+  onReplayCourse: CoursesViewProps["onReplayCourse"];
   onReplayLesson: CoursesViewProps["onReplayLesson"];
   onSelectCourse: CoursesViewProps["onSelectCourse"];
   onStartLesson: CoursesViewProps["onStartLesson"];
@@ -488,7 +502,8 @@ function CourseDetail({
   const cardById = new Map(cards.map((card) => [card.id, card]));
 
   useEffect(() => {
-    headingRef.current?.focus();
+    window.scrollTo({ top: 0, behavior: "auto" });
+    headingRef.current?.focus({ preventScroll: true });
   }, []);
 
   function toggleUnit(unitId: string) {
@@ -550,7 +565,7 @@ function CourseDetail({
             <CoursePrimaryAction
               item={item}
               lesson={primaryLesson}
-              onReplayLesson={onReplayLesson}
+              onReplayCourse={onReplayCourse}
               onStartLesson={onStartLesson}
             />
           )}
@@ -652,24 +667,21 @@ function CourseDetail({
 function CoursePrimaryAction({
   item,
   lesson,
-  onReplayLesson,
+  onReplayCourse,
   onStartLesson,
 }: {
   item: CourseCatalogItem;
   lesson: CourseLesson;
-  onReplayLesson: CoursesViewProps["onReplayLesson"];
+  onReplayCourse: CoursesViewProps["onReplayCourse"];
   onStartLesson: CoursesViewProps["onStartLesson"];
 }) {
   if (item.progress.status === "completed") {
     return (
-      <button
-        className="secondary-button"
-        onClick={() => onReplayLesson(item.course.id, lesson.id)}
-        type="button"
-      >
-        <RotateCcw aria-hidden="true" size={16} />
-        Replay course
-      </button>
+      <CourseReplayButton
+        courseId={item.course.id}
+        courseTitle={item.course.title}
+        onReplayCourse={onReplayCourse}
+      />
     );
   }
 
@@ -683,6 +695,28 @@ function CoursePrimaryAction({
     >
       <Play aria-hidden="true" size={16} />
       {label}
+    </button>
+  );
+}
+
+export function CourseReplayButton({
+  courseId,
+  courseTitle,
+  onReplayCourse,
+}: {
+  courseId: CourseId;
+  courseTitle: string;
+  onReplayCourse: CoursesViewProps["onReplayCourse"];
+}) {
+  return (
+    <button
+      aria-label={`Replay full course ${courseTitle}`}
+      className="secondary-button"
+      onClick={() => onReplayCourse(courseId)}
+      type="button"
+    >
+      <RotateCcw aria-hidden="true" size={16} />
+      Replay course
     </button>
   );
 }
@@ -888,16 +922,6 @@ function isDefaultCatalogQuery(query: CourseCatalogQuery): boolean {
     query.status === null &&
     query.sort === DEFAULT_COURSE_CATALOG_QUERY.sort
   );
-}
-
-function catalogQueryKey(query: CourseCatalogQuery): string {
-  return [
-    query.text.trim(),
-    query.categoryId ?? "",
-    query.cefr ?? "",
-    query.status ?? "",
-    query.sort,
-  ].join("\u001f");
 }
 
 function courseViewButtonId(courseId: CourseId): string {

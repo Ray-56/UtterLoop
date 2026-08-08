@@ -1,7 +1,11 @@
 import type { SentenceCard } from "../content/SentenceCard";
 import type { AnswerEvaluation } from "./AnswerEvaluation";
 import type { AttemptPreview } from "./AttemptPreview";
-import { matchTokenIndexes, tokenizeAnswer } from "./evaluateAttempt";
+import {
+  matchTokenIndexes,
+  tokenizeAnswer,
+  tokenizeWrittenAnswer,
+} from "./evaluateAttempt";
 
 export const CORRECTION_SLOT_PLACEHOLDER = "\u2063";
 
@@ -11,8 +15,8 @@ export interface CorrectionDraft {
 }
 
 export function buildAttemptPreview(card: SentenceCard, answer: string): AttemptPreview {
-  const acceptedTokenSets = tokenSetsForCard(card);
-  const typedTokens = tokenizeAnswer(answer);
+  const acceptedTokenSets = tokenSetsForCard(card, tokenizeWrittenAnswer);
+  const typedTokens = tokenizeWrittenAnswer(answer);
   const expectedTokens = selectPreviewTokens(acceptedTokenSets, typedTokens);
   const slotWidths = stableSlotWidths(acceptedTokenSets);
   const slotCount = slotWidths.length;
@@ -85,10 +89,17 @@ export function buildAttemptPreview(card: SentenceCard, answer: string): Attempt
 export function buildEvaluationPreview(
   card: SentenceCard,
   evaluation: AnswerEvaluation,
+  attemptAnswer: string,
 ): AttemptPreview {
-  const acceptedTokenSets = tokenSetsForCard(card);
-  const expectedTokens = tokenizeAnswer(evaluation.acceptedAnswer);
-  const typedTokens = tokenizeAnswer(evaluation.normalizedAttempt);
+  const writtenExpectedTokens = tokenizeWrittenAnswer(evaluation.acceptedAnswer);
+  const writtenTypedTokens = tokenizeWrittenAnswer(attemptAnswer);
+  const useScoringTokens =
+    evaluation.normalizedExpected === evaluation.normalizedAttempt
+    && writtenExpectedTokens.join(" ") !== writtenTypedTokens.join(" ");
+  const tokenize = useScoringTokens ? tokenizeAnswer : tokenizeWrittenAnswer;
+  const acceptedTokenSets = tokenSetsForCard(card, tokenize);
+  const expectedTokens = tokenize(evaluation.acceptedAnswer);
+  const typedTokens = tokenize(attemptAnswer);
   const matches = matchTokenIndexes(expectedTokens, typedTokens);
   const tokens: AttemptPreview["tokens"] = [];
   const extraTokens: string[] = [];
@@ -185,9 +196,9 @@ export function buildCorrectionPreview(
   acceptedAnswer: string,
   draft: string,
 ): AttemptPreview {
-  const acceptedTokenSets = tokenSetsForCard(card);
-  const expectedTokens = tokenizeAnswer(acceptedAnswer);
-  const draftTokens = tokenizeAnswer(draft);
+  const acceptedTokenSets = tokenSetsForCard(card, tokenizeWrittenAnswer);
+  const expectedTokens = tokenizeWrittenAnswer(acceptedAnswer);
+  const draftTokens = tokenizeWrittenAnswer(draft);
   const firstEmptyIndex = expectedTokens.findIndex(
     (_, index) => !draftTokens[index] || draftTokens[index] === CORRECTION_SLOT_PLACEHOLDER,
   );
@@ -249,11 +260,14 @@ export function buildCorrectionPreview(
   };
 }
 
-function tokenSetsForCard(card: SentenceCard): string[][] {
+function tokenSetsForCard(
+  card: SentenceCard,
+  tokenize: (answer: string) => string[],
+): string[][] {
   const seen = new Set<string>();
 
   return [card.english, ...card.acceptableAnswers]
-    .map(tokenizeAnswer)
+    .map(tokenize)
     .filter((tokens) => {
       const key = tokens.join(" ");
       if (!key || seen.has(key)) {

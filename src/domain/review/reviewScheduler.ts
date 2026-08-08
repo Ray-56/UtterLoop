@@ -68,6 +68,10 @@ export function applySkippedReview(
     : applyFailedRecall(current, now);
 }
 
+export function keepInAcquisitionReview(current: ReviewState, now: Date): ReviewState {
+  return keepInFocusedReview(current, now);
+}
+
 export function isReviewDue(reviewState: ReviewState, now: Date): boolean {
   return new Date(reviewState.dueAt).getTime() <= now.getTime();
 }

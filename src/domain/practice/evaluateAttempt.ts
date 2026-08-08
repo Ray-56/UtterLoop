@@ -26,16 +26,27 @@ export function normalizeAnswer(value: string): string {
     lower,
   );
 
-  return expanded
+  return normalizeWrittenAnswer(expanded)
+    .replace(/[']/g, "");
+}
+
+function normalizeWrittenAnswer(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[’]/g, "'")
     .replace(/[.,!?;:"()[\]{}]/g, " ")
     .replace(/[-/]/g, " ")
-    .replace(/[']/g, "")
     .replace(/\s+/g, " ")
     .trim();
 }
 
 export function tokenizeAnswer(value: string): string[] {
   const normalized = normalizeAnswer(value);
+  return normalized ? normalized.split(" ") : [];
+}
+
+export function tokenizeWrittenAnswer(value: string): string[] {
+  const normalized = normalizeWrittenAnswer(value);
   return normalized ? normalized.split(" ") : [];
 }
 

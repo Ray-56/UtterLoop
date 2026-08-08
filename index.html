@@ -7,6 +7,24 @@
       name="description"
       content="UtterLoop is a local-first sentence recall trainer for repeated output and spaced review."
     />
+    <script>
+      (() => {
+        const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        let theme = systemTheme;
+
+        try {
+          const stored = JSON.parse(window.localStorage.getItem("utterloop:personalization:v1") ?? "null");
+          if (stored?.version === 1 && (stored.theme === "light" || stored.theme === "dark")) {
+            theme = stored.theme;
+          }
+        } catch {
+          // Keep the system theme when local preferences are unavailable.
+        }
+
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.style.colorScheme = theme;
+      })();
+    </script>
     <link rel="icon" href="/favicon.png?v=3" type="image/png" sizes="64x64" />
     <link rel="icon" href="/favicon.svg?v=3" type="image/svg+xml" sizes="any" />
     <title>UtterLoop</title>

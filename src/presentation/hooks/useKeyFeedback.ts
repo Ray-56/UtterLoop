@@ -4,8 +4,15 @@ import { KeystrokeAudio, type KeystrokeSound } from "../audio/KeystrokeAudio";
 
 const soundPreferenceKey = "utterloop:key-sound";
 
-export function useKeyFeedback() {
-  const [isSoundEnabled, setIsSoundEnabled] = useState(readSoundPreference);
+interface KeyFeedbackOptions {
+  isMuted?: boolean;
+  onMutedChange?(isMuted: boolean): Promise<unknown> | unknown;
+}
+
+export function useKeyFeedback(options: KeyFeedbackOptions = {}) {
+  const [isSoundEnabled, setIsSoundEnabled] = useState(() =>
+    options.isMuted === undefined ? readSoundPreference() : !options.isMuted);
+  const [soundPreferenceError, setSoundPreferenceError] = useState<string | null>(null);
   const [keyPulse, setKeyPulse] = useState(0);
   const playerRef = useRef<KeystrokeAudio | null>(null);
   const isSoundSupported = KeystrokeAudio.isSupported();
@@ -16,6 +23,12 @@ export function useKeyFeedback() {
   }, []);
 
   useEffect(() => () => playerRef.current?.close(), []);
+
+  useEffect(() => {
+    if (options.isMuted !== undefined) {
+      setIsSoundEnabled(!options.isMuted);
+    }
+  }, [options.isMuted]);
 
   const triggerKeyFeedback = useCallback(
     (command: PracticeKeyCommand) => {
@@ -31,18 +44,29 @@ export function useKeyFeedback() {
   const toggleKeySound = useCallback(() => {
     const nextValue = !isSoundEnabled;
     setIsSoundEnabled(nextValue);
-    writeSoundPreference(nextValue);
+    setSoundPreferenceError(null);
+    if (options.onMutedChange) {
+      void Promise.resolve(options.onMutedChange(!nextValue)).catch((caught: unknown) => {
+        setIsSoundEnabled(!nextValue);
+        setSoundPreferenceError(caught instanceof Error
+          ? `Key sound preference could not be saved: ${caught.message}`
+          : "Key sound preference could not be saved.");
+      });
+    } else {
+      writeSoundPreference(nextValue);
+    }
     setKeyPulse((current) => current + 1);
 
     if (nextValue && isSoundSupported) {
       void getPlayer().play("action");
     }
-  }, [getPlayer, isSoundEnabled, isSoundSupported]);
+  }, [getPlayer, isSoundEnabled, isSoundSupported, options]);
 
   return {
     isSoundEnabled,
     isSoundSupported,
     keyPulse,
+    soundPreferenceError,
     toggleKeySound,
     triggerKeyFeedback,
   };

@@ -1,4 +1,4 @@
-import type { ReviewState } from "../review/ReviewState";
+import type { SentenceLearningState } from "../learning/SentenceLearningState";
 import type { Course } from "./Course";
 
 export interface CourseProgress {
@@ -28,11 +28,11 @@ export interface LessonProgress {
   totalCards: number;
 }
 
-export function deriveCourseProgress(course: Course, reviewStates: ReviewState[]): CourseProgress {
-  const reviewByCardId = new Map(reviewStates.map((reviewState) => [reviewState.cardId, reviewState]));
+export function deriveCourseProgress(course: Course, learningStates: SentenceLearningState[]): CourseProgress {
+  const learningByCardId = new Map(learningStates.map((state) => [state.cardId, state]));
   const units = course.units.map<UnitProgress>((unit) => {
     const lessons = unit.lessons.map<LessonProgress>((lesson) => {
-      const cardStates = lesson.cardIds.map((cardId) => reviewByCardId.get(cardId));
+      const cardStates = lesson.cardIds.map((cardId) => learningByCardId.get(cardId));
       const attemptedCards = cardStates.filter(isAttempted).length;
       const passedCards = cardStates.filter(isPassed).length;
 
@@ -74,12 +74,12 @@ export function deriveCourseProgress(course: Course, reviewStates: ReviewState[]
   };
 }
 
-function isPassed(reviewState: ReviewState | undefined): boolean {
-  return Boolean(reviewState && (reviewState.stage >= 1 || reviewState.learningStatus === "mastered"));
+function isPassed(state: SentenceLearningState | undefined): boolean {
+  return Boolean(state?.firstPassedAt);
 }
 
-function isAttempted(reviewState: ReviewState | undefined): boolean {
-  return Boolean(reviewState && (reviewState.lastReviewedAt || isPassed(reviewState)));
+function isAttempted(state: SentenceLearningState | undefined): boolean {
+  return Boolean(state?.introducedAt || isPassed(state));
 }
 
 function statusForCounts(

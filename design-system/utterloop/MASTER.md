@@ -63,11 +63,17 @@ Use graphite and white for structure. Mint is the primary practice color. Yellow
 ## Practice Contract
 
 - No visible input or textarea in the practice stage. A visually hidden native input may provide mobile keyboard and IME support.
+- Entering Practice lands directly in the viewport-bound cockpit. Do not place a visible page-level title, view number, or routine sync status above it; retain a screen-reader-only `Practice session` heading for document structure and route announcements.
 - Word slots are the visible input surface. Keep their expected-answer baseline stable, but expand them with longer learner input and wrap extreme words instead of clipping text.
 - Keep score, queue progress, prompt, feedback, and shortcuts in one stable bordered stage.
 - Shortcut order is Audio, Master, Vocabulary, Check/Next, Show/Hide answer or Try again.
 - The five core keycaps display literal `Ctrl` on every platform because these bindings use Control, not Command.
-- The Answer toggle uses a stable, labeled hint above the word track. Toggling it must not move the word slots or render expected words as learner input.
+- During ordinary Recall, the reserved support slot above the word track is visually empty. `Ctrl+;` reveals or hides one single-row Answer strip and must not move the word slots or render expected words as learner input. Do not add Context, Pattern, Keywords, Frame, sentence-IPA, or duplicate audio controls to this strip.
+- When curated token analysis exists, the single row is a sentence map: grammar chunks form labeled constituent frames, and each token shows IPA, written form, Chinese gloss, and part of speech. Role color is reinforcement only; every group and token keeps a text label. First Exposure, Result, and the explicit `Ctrl+;` Answer reuse the same row; older or imported cards fall back to one plain target row without inferred annotations.
 - After a failed check, retain matched words, clear every mismatch and extra word without revealing replacements, and focus the first cleared slot.
 - Correct words may cycle through the accent palette. Active input uses yellow focus feedback.
 - The key-sound toggle lives in the stage top bar and never replaces or reorders a shortcut.
+- Routine local persistence, normal speech-synthesis availability, and successful pronunciation playback are silent UI states. Do not show persistent `Saved locally`, audio-ready, or playback-success chrome; keep the explicit mute control and surface speech unavailability only when it affects a requested action.
+- A non-blocking save failure uses one compact, action-specific Retry notice in the cockpit top bar without moving the word track. A failed critical Practice write retains the current card and draft and keeps a blocking Retry error inside the cockpit until durable state is known.
+- Bind the Practice shell to the available `100dvh` height. Prompt and result share a compact status band; the single-row sentence map stays in its stable slot and scrolls only horizontally on narrow screens; long word content scrolls internally so the five shortcuts remain visible.
+- Finger Guide defaults to a compact post-key recommendation (`Auto`) rather than a second full-size stage. Persist `Auto / Compact / Full / Off`; render Full as a non-layout-shifting overlay, return to a home-row reminder in muted/study states, and hide it on mobile or very short touch landscape viewports.

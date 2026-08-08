@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { CORRECTION_SLOT_PLACEHOLDER } from "../../domain/practice/buildAttemptPreview";
 import {
+  resolveCorrectionSpaceNavigation,
   resolvePracticeKey,
   stabilizeCorrectionDraft,
 } from "./resolvePracticeKey";
@@ -108,6 +109,22 @@ describe("resolvePracticeKey", () => {
 });
 
 describe("stabilizeCorrectionDraft", () => {
+  it("keeps correction-mode Space as an accepted command while moving to the next error", () => {
+    const answer = `hello ${CORRECTION_SLOT_PLACEHOLDER} name ${CORRECTION_SLOT_PLACEHOLDER}`;
+
+    expect(resolveCorrectionSpaceNavigation(answer, 7)).toEqual({
+      command: { type: "append", value: " " },
+      selectionStart: 13,
+      selectionEnd: 14,
+    });
+    expect(resolveCorrectionSpaceNavigation(answer, answer.length)).toEqual({
+      command: { type: "append", value: " " },
+      selectionStart: 6,
+      selectionEnd: 7,
+    });
+    expect(resolveCorrectionSpaceNavigation("hello there", 5)).toBeNull();
+  });
+
   it("keeps later correct words in place across native deletion paths", () => {
     const answer = `hello wrong name ${CORRECTION_SLOT_PLACEHOLDER} emma`;
 

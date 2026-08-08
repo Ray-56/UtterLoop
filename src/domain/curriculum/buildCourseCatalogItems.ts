@@ -1,4 +1,4 @@
-import type { ReviewState } from "../review/ReviewState";
+import type { SentenceLearningState } from "../learning/SentenceLearningState";
 import type { Course, CourseCategory, LearningPath } from "./Course";
 import {
   deriveCourseProgress,
@@ -20,14 +20,14 @@ export interface BuildCourseCatalogItemsInput {
   categories: CourseCategory[];
   courses: Course[];
   learningPaths: LearningPath[];
-  reviewStates: ReviewState[];
+  learningStates: SentenceLearningState[];
 }
 
 export function buildCourseCatalogItems({
   categories,
   courses,
   learningPaths,
-  reviewStates,
+  learningStates,
 }: BuildCourseCatalogItemsInput): CourseCatalogItem[] {
   const categoryById = new Map(categories.map((category) => [category.id, category]));
   const pathIdsByCourseId = new Map<string, string[]>();
@@ -73,7 +73,7 @@ export function buildCourseCatalogItems({
     return {
       course,
       category,
-      progress: deriveCourseProgress(course, reviewStates),
+      progress: deriveCourseProgress(course, learningStates),
       pathIds: pathIdsByCourseId.get(course.id) ?? [],
       unitCount: course.units.length,
       lessonCount,

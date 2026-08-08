@@ -1,4 +1,4 @@
-import type { ReviewState } from "../review/ReviewState";
+import type { SentenceLearningState } from "../learning/SentenceLearningState";
 import { deriveCourseProgress, type CourseProgress } from "./deriveCourseProgress";
 import type { Course, LearningPath } from "./Course";
 
@@ -17,7 +17,7 @@ export interface LearningPathProgress {
 export function deriveLearningPathProgress(
   path: LearningPath,
   courses: Course[],
-  reviewStates: ReviewState[],
+  learningStates: SentenceLearningState[],
 ): LearningPathProgress {
   const courseById = new Map(courses.map((course) => [course.id, course]));
   const courseProgress = path.courseIds.map((courseId) => {
@@ -27,7 +27,7 @@ export function deriveLearningPathProgress(
       throw new Error(`LearningPath ${path.id} references unknown Course: ${courseId}`);
     }
 
-    return deriveCourseProgress(course, reviewStates);
+    return deriveCourseProgress(course, learningStates);
   });
   const completedCourses = courseProgress.filter((progress) => progress.status === "completed").length;
   const totalCourses = courseProgress.length;

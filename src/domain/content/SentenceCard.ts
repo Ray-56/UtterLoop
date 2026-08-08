@@ -1,4 +1,5 @@
 import type { ContentLicense } from "./ContentLicense";
+import type { SentenceLearningSupport } from "./SentenceLearningSupport";
 
 export type SentenceCardId = string;
 
@@ -7,6 +8,7 @@ export interface SentenceCard {
   english: string;
   prompt: string;
   note?: string;
+  learningSupport?: SentenceLearningSupport;
   source: string;
   sourceUrl?: string;
   license?: ContentLicense;

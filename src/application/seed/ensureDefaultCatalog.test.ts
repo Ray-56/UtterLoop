@@ -81,6 +81,32 @@ describe("ensureDefaultCatalog", () => {
       },
     ]);
   });
+
+  it("refreshes the default learning path when new courses are appended", async () => {
+    const currentPath = defaultCatalog.learningPaths[0];
+    const previousPath = {
+      ...currentPath,
+      description: "An earlier version of the default path.",
+      courseIds: currentPath.courseIds.slice(0, 3),
+    };
+    const repository = new CatalogRepository(
+      [previousPath],
+      defaultCatalog.courses,
+      defaultCatalog.cards,
+      defaultCatalog.categories,
+    );
+
+    await ensureDefaultCatalog(repository);
+
+    expect(repository.writes).toEqual([
+      {
+        categories: [],
+        learningPaths: [currentPath],
+        courses: [],
+        cards: [],
+      },
+    ]);
+  });
 });
 
 class CatalogRepository {

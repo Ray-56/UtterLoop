@@ -8,6 +8,9 @@ The following courses are original UtterLoop content:
 
 - **Starter Foundations**
 - **Work & Study Essentials**
+- **Travel & City Essentials**
+- **Social Plans & Stories**
+- **Meetings & Decisions**
 
 Their sentences, prompts, and course metadata are dedicated to the public domain under [CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/). Attribution is not required.
 

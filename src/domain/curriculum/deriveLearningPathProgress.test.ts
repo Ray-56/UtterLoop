@@ -19,7 +19,7 @@ const courses = [course("course-1", "lesson-1", "card-1"), course("course-2", "l
 
 describe("deriveLearningPathProgress", () => {
   it("recommends the first incomplete course and lesson in path order", () => {
-    const progress = deriveLearningPathProgress(path, courses, [reviewState("card-1", 1)]);
+    const progress = deriveLearningPathProgress(path, courses, [learningState("card-1")]);
 
     expect(progress).toMatchObject({
       pathId: "path-1",
@@ -33,8 +33,8 @@ describe("deriveLearningPathProgress", () => {
 
   it("has no recommendation after the path is complete", () => {
     const progress = deriveLearningPathProgress(path, courses, [
-      reviewState("card-1", 1),
-      reviewState("card-2", 1),
+      learningState("card-1"),
+      learningState("card-2"),
     ]);
 
     expect(progress).toMatchObject({
@@ -75,13 +75,11 @@ function course(id: string, lessonId: string, cardId: string): Course {
   };
 }
 
-function reviewState(cardId: string, stage: 0 | 1) {
+function learningState(cardId: string) {
   return {
     cardId,
-    stage,
-    dueAt: "2026-07-20T00:00:00.000Z",
-    lastReviewedAt: "2026-07-19T00:00:00.000Z",
-    streak: stage,
-    lapseCount: 0,
+    introducedAt: "2026-07-19T00:00:00.000Z",
+    firstPassedAt: "2026-07-20T00:00:00.000Z",
+    firstPassSource: "independent-recall" as const,
   };
 }

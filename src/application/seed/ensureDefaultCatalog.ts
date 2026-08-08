@@ -1,5 +1,6 @@
 import type { TrainingRepository } from "../ports/TrainingRepository";
 import { validateCourseCatalog } from "../../domain/curriculum/validateCourseCatalog";
+import type { LearningPath } from "../../domain/curriculum/Course";
 import { defaultCatalog } from "./defaultCatalog";
 
 type DefaultCatalogRepository = Pick<
@@ -25,7 +26,7 @@ export async function ensureDefaultCatalog(
   const existingCategoryIds = new Set(
     existingCategories.map((category) => category.id),
   );
-  const existingPathIds = new Set(existingPaths.map((path) => path.id));
+  const existingPathsById = new Map(existingPaths.map((path) => [path.id, path]));
   const existingCoursesById = new Map(
     existingCourses.map((course) => [course.id, course]),
   );
@@ -36,7 +37,10 @@ export async function ensureDefaultCatalog(
   );
 
   const learningPaths = defaultCatalog.learningPaths.filter(
-    (path) => !existingPathIds.has(path.id),
+    (path) => {
+      const existingPath = existingPathsById.get(path.id);
+      return !existingPath || !sameLearningPath(existingPath, path);
+    },
   );
   const courses = defaultCatalog.courses.filter((course) => {
     const existingCourse = existingCoursesById.get(course.id);
@@ -72,4 +76,14 @@ export async function ensureDefaultCatalog(
     courses,
     cards,
   });
+}
+
+function sameLearningPath(left: LearningPath, right: LearningPath): boolean {
+  return (
+    left.id === right.id &&
+    left.title === right.title &&
+    left.description === right.description &&
+    left.courseIds.length === right.courseIds.length &&
+    left.courseIds.every((courseId, index) => courseId === right.courseIds[index])
+  );
 }
