@@ -10,7 +10,8 @@ import {
 async function enterStarterRecall(page: Page): Promise<void> {
   await openReadyApp(page, STARTER_LESSON_URL);
   await page.getByRole("button", { name: "Skip Quick Start" }).click();
-  await page.getByRole("button", { name: "Start recall" }).click();
+  await expect(page.getByLabel(/Quick Start, step/)).toHaveCount(0);
+  await page.getByLabel("Type the target sentence").press("Enter");
   await expect(page.getByLabel("First exposure")).toHaveCount(0);
 }
 
@@ -45,7 +46,7 @@ smokeTest("cross-browser smoke runs only in Firefox and WebKit", ({ browserName 
 
 smokeTest("starts without console, page, request, or asset errors", async ({ page }) => {
   await openReadyApp(page);
-  await expect(page.getByRole("heading", { name: "Practice session" })).toHaveClass(/sr-only/);
+  await expect(page.getByRole("heading", { name: "Practice session", exact: true })).toHaveClass(/sr-only/);
   await expect(page.locator(".workspace-practice > .workspace-header")).toHaveCount(0);
 });
 
@@ -77,22 +78,23 @@ smokeTest("accepts immediate contraction input when Quick Start begins recall", 
   await openReadyApp(page, STARTER_LESSON_URL);
   await expect(page.getByLabel("Quick Start, step 1 of 6")).toBeVisible();
 
-  await page.getByRole("button", { name: "Start recall" }).click();
-  await expect(page.getByLabel("Quick Start, step 2 of 6")).toBeVisible();
-
   const capture = page.getByLabel("Type the target sentence");
+  await capture.press("H");
+  await expect(page.getByLabel("Quick Start, step 2 of 6")).toBeVisible();
+  await expect(capture).toHaveValue("H");
+
   await capture.fill("Hello, my name is Emma.");
   await capture.press("Enter");
   await page.getByRole("button", { name: "Next, shortcut Enter" }).click();
 
   const step3 = page.getByLabel("Quick Start, step 3 of 6");
   await expect(step3).toBeVisible();
-  await expect(step3).toContainText("Start recall when you're ready");
+  await expect(step3).toContainText("Type, press Enter, or tap the word track");
   await expect(step3).not.toContainText("in your own typing");
   await expect(page.getByText("我是这个班的新同学。", { exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: "Start recall" }).click();
-  await page.keyboard.type("i'm");
+  await capture.press("i");
+  await page.keyboard.type("'m");
 
   await expect(capture).toHaveValue("i'm");
   await expect(page.getByRole("button", { name: "Edit word 1" })).toContainText("i'm");

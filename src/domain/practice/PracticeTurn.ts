@@ -1,5 +1,6 @@
 import type { SentenceCardId } from "../content/SentenceCard";
 import { hasFirstPass, type SentenceLearningState } from "../learning/SentenceLearningState";
+import type { EvaluationOutcome } from "./AnswerEvaluation";
 
 export type RecallSupportLevel = 0 | 1 | 2 | 3 | 4;
 
@@ -85,6 +86,16 @@ export function applyRecallSupport(
     supportKindsUsed: uniqueKinds([...turn.supportKindsUsed, kind]),
     answerWasRevealed: turn.answerWasRevealed || kind === "answer",
   };
+}
+
+export function shouldAutomaticallyRevealAnswer(input: {
+  answerWasRevealed: boolean;
+  outcome: EvaluationOutcome;
+  submissionIndex: number;
+}): boolean {
+  return !input.answerWasRevealed
+    && input.outcome !== "perfect"
+    && input.submissionIndex >= 2;
 }
 
 export function enterCorrectivePractice(turn: PracticeTurn): PracticeTurn {

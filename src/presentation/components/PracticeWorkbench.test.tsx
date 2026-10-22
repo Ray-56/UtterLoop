@@ -18,6 +18,7 @@ import {
   retryPendingAudioSave,
   shouldRetryAudioSaveBeforeCommand,
   transitionCheckpointAfterFirstExposure,
+  visiblePracticeNotice,
   type PracticeFailedOperation,
 } from "./PracticeWorkbench";
 
@@ -254,6 +255,33 @@ describe("PracticeWorkbench support save feedback", () => {
       "toggle-pause",
     ] as const) {
       expect(shouldRetryAudioSaveBeforeCommand(command)).toBe(false);
+    }
+  });
+});
+
+describe("PracticeWorkbench visible notice filtering", () => {
+  it("keeps routine action confirmations assistive-only", () => {
+    for (const notice of [
+      "Answer shown.",
+      "Answer shown. Type it exactly for instructional completion.",
+      "Answer hidden. The support evidence remains recorded.",
+      "Saved to Vocabulary.",
+      "Removed from Vocabulary.",
+      "Practice paused.",
+      "Practice resumed.",
+      "Support level 4 recorded. This turn is Guided Recall.",
+    ]) {
+      expect(visiblePracticeNotice(notice)).toBeNull();
+    }
+  });
+
+  it("keeps actionable guidance and failures visible", () => {
+    for (const notice of [
+      "Complete every word slot before checking.",
+      "Edit the highlighted words, then check again.",
+      "Your answer is still here. Retry saving this attempt.",
+    ]) {
+      expect(visiblePracticeNotice(notice)).toBe(notice);
     }
   });
 });

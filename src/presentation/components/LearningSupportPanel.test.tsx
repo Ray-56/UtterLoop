@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { starterLearningSupportByCardId } from "../../application/seed/starterLearningSupport";
 import type { SentenceCard } from "../../domain/content/SentenceCard";
 import {
@@ -84,7 +84,6 @@ function renderPanel(
     <LearningSupportPanel
       card={card}
       mode="recall"
-      onStartRecall={vi.fn()}
       supportLevel={0}
       {...props}
     />,
@@ -92,13 +91,13 @@ function renderPanel(
 }
 
 describe("LearningSupportPanel", () => {
-  it("shows only the single grammar-map row and Start recall command on full First Exposure", () => {
+  it("shows only the single grammar-map row on full First Exposure", () => {
     const html = renderPanel(tokenizedCard, { mode: "first-exposure" });
 
     expect(html).toContain("learning-support-map-only");
     expect(html).toContain("sentence-grammar-map");
-    expect(html).toContain("Start recall");
-    expect(html.match(/<button/g)).toHaveLength(1);
+    expect(html).not.toContain("Start recall");
+    expect(html).not.toContain("<button");
     expect(html).not.toContain("Play audio");
     expect(html).not.toContain("learning-support-heading");
     expect(html).not.toContain("learning-support-context");
@@ -107,16 +106,6 @@ describe("LearningSupportPanel", () => {
     expect(html).not.toContain("learning-support-target-form");
     expect(html).not.toContain("pronunciation-chunks");
     expect(html).not.toContain("grammar-chunks");
-  });
-
-  it("disables the sole First Exposure command while persistence needs attention", () => {
-    const html = renderPanel(tokenizedCard, {
-      disabled: true,
-      mode: "first-exposure",
-    });
-
-    expect(html.match(/<button/g)).toHaveLength(1);
-    expect(html.match(/disabled/g)).toHaveLength(1);
   });
 
   it("shows only the grammar map in Result and explicit Answer", () => {
@@ -158,7 +147,7 @@ describe("LearningSupportPanel", () => {
     expect(abbreviated).not.toContain("sentence-grammar-map");
     expect(abbreviated).toContain("learning-support-full-target");
     expect(abbreviated).toContain("Could you open the window?");
-    expect(abbreviated).toContain("Start recall");
+    expect(abbreviated).not.toContain("Start recall");
   });
 
   it("uses only the plain written target when curated token details are unavailable", () => {

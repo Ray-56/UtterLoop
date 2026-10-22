@@ -51,6 +51,7 @@ import {
 import {
   applyRecallSupport,
   createPracticeTurn,
+  shouldAutomaticallyRevealAnswer,
   type PracticePhase,
   type PracticeTurn,
   type RecallSupportKind,
@@ -134,6 +135,11 @@ interface StartingRecallCapture {
   selectionEnd: number;
   selectionStart: number;
 }
+
+type InitialRecallCapture = Pick<
+  StartingRecallCapture,
+  "draft" | "isComposing" | "selectionEnd" | "selectionStart"
+>;
 
 interface StartingRecallFeedback {
   command: Extract<PracticeKeyCommand, { type: "append" | "delete" }>;
@@ -265,6 +271,7 @@ export function PracticeWorkbench({
   const [correctionAcceptedAnswer, setCorrectionAcceptedAnswer] = useState<string | null>(null);
   const [practiceTurn, setPracticeTurn] = useState<PracticeTurn | null>(null);
   const [submissionIndex, setSubmissionIndex] = useState(0);
+  const [isAutomaticAnswerRevealPending, setIsAutomaticAnswerRevealPending] = useState(false);
   const [returnCounts, setReturnCounts] = useState<Record<string, number>>({});
   const [pendingReturnCount, setPendingReturnCount] = useState(0);
   const [checkpointStatus, setCheckpointStatus] = useState<"loading" | "ready">("loading");
@@ -502,6 +509,7 @@ export function PracticeWorkbench({
     setSuppressRestoredTarget(false);
     setPracticeTurn(null);
     setSubmissionIndex(0);
+    setIsAutomaticAnswerRevealPending(false);
     setReturnCounts({});
     setPendingReturnCount(0);
     setCheckpointStatus(quickStartSession ? "ready" : "loading");
@@ -732,7 +740,7 @@ export function PracticeWorkbench({
         let resumeNotice = opened.status === "opened"
           ? sessionGeneration > 0
             ? "Practice restarted from the first sentence."
-            : "Practice is ready."
+            : null
           : "Practice restored. Your draft and recall turn are ready.";
         if (restored.recoveredCommand) {
           const committedAttempt = durableTurnEntries.find(
@@ -857,6 +865,7 @@ export function PracticeWorkbench({
     setCorrectionAcceptedAnswer(null);
     setPracticeTurn(null);
     setSubmissionIndex(0);
+    setIsAutomaticAnswerRevealPending(false);
     setSuppressRestoredTarget(false);
     setFailedOperation(null);
   }, []);
@@ -1245,6 +1254,11 @@ export function PracticeWorkbench({
         context: logContext,
       });
       const grade = gradeRecall(result, hadEdits, submissionIndex);
+      const shouldRevealAnswer = shouldAutomaticallyRevealAnswer({
+        answerWasRevealed: practiceTurn.answerWasRevealed || answerWasRevealed,
+        outcome: result.evaluation.outcome,
+        submissionIndex,
+      });
       const roundEvents: PracticeSessionRoundEvent[] = [
         { kind: "attempted", occurrenceId: logContext.occurrenceId },
       ];
@@ -1326,6 +1340,9 @@ export function PracticeWorkbench({
         );
       }
       await commitLifecycleEvents("submission", roundEvents);
+      if (shouldRevealAnswer) {
+        setIsAutomaticAnswerRevealPending(true);
+      }
     } catch (caught) {
       const message = "Your answer could not be saved. It is still here for retry.";
       setShortcutNotice("Your answer is still here. Retry saving this attempt.");
@@ -1534,7 +1551,7 @@ export function PracticeWorkbench({
     setStartingRecallCapture(pausedCapture);
   }, []);
 
-  const startRecall = useCallback(async () => {
+  const startRecall = useCallback(async (initialCapture?: InitialRecallCapture) => {
     if (failedOperation?.kind === "audio-save") {
       void failedOperation.retry();
       return;
@@ -1547,12 +1564,12 @@ export function PracticeWorkbench({
     const nextCapture: StartingRecallCapture = currentCapture
       ? { ...currentCapture, isActive: true }
       : {
-          draft: answer,
+          draft: initialCapture?.draft ?? answer,
           isActive: true,
-          isComposing: false,
+          isComposing: initialCapture?.isComposing ?? false,
           isLifecycleReady: false,
-          selectionStart: caretOffset,
-          selectionEnd: selectionEndOffset,
+          selectionStart: initialCapture?.selectionStart ?? caretOffset,
+          selectionEnd: initialCapture?.selectionEnd ?? selectionEndOffset,
         };
     startingRecallCaptureRef.current = nextCapture;
     startingRecallFeedbackRef.current = null;
@@ -1754,6 +1771,29 @@ export function PracticeWorkbench({
     hadEdits,
     itemElapsedSeconds,
     practiceTurn,
+  ]);
+
+  useEffect(() => {
+    if (
+      !isAutomaticAnswerRevealPending
+      || isSubmitting
+      || isUpdatingStatus
+      || failedOperation?.locksPractice
+    ) {
+      return;
+    }
+
+    setIsAutomaticAnswerRevealPending(false);
+    if (!answerWasRevealed) {
+      void registerSupport("answer", 4, true);
+    }
+  }, [
+    answerWasRevealed,
+    failedOperation,
+    isAutomaticAnswerRevealPending,
+    isSubmitting,
+    isUpdatingStatus,
+    registerSupport,
   ]);
 
   const saveAudioEngagement = useCallback(async (): Promise<boolean> => {
@@ -2270,7 +2310,6 @@ export function PracticeWorkbench({
       }
 
       if (isFirstExposure && [
-        "append",
         "delete",
         "clear",
         "incomplete",
@@ -2280,6 +2319,12 @@ export function PracticeWorkbench({
         "resume-editing",
       ].includes(command.type)) {
         event.preventDefault();
+        return;
+      }
+
+      if (isFirstExposure && command.type === "append") {
+        triggerFingerGuide(event, command);
+        triggerKeyFeedback(command);
         return;
       }
 
@@ -2349,6 +2394,20 @@ export function PracticeWorkbench({
         return;
       }
 
+      if (isFirstExposure) {
+        const maximumLength = activeItem
+          ? Math.max(activeItem.card.english.length * 2, 160)
+          : 160;
+        const boundedAnswer = nextAnswer.slice(0, maximumLength);
+        void startRecall({
+          draft: boundedAnswer,
+          isComposing: inputEvent.isComposing,
+          selectionStart: Math.min(nextSelectionStart, boundedAnswer.length),
+          selectionEnd: Math.min(nextSelectionEnd, boundedAnswer.length),
+        });
+        return;
+      }
+
       updateAnswerFromCapture(
         nextAnswer,
         nextSelectionStart,
@@ -2359,7 +2418,9 @@ export function PracticeWorkbench({
     [
       activeItem,
       finishStartingRecallCapture,
+      isFirstExposure,
       showFingerGuideStroke,
+      startRecall,
       triggerKeyFeedback,
       updateAnswerFromCapture,
     ],
@@ -3269,6 +3330,7 @@ function SentenceGameBoard({
 }: SentenceGameBoardProps) {
   const boardState = lastResult?.evaluation.outcome ?? "typing";
   const accuracy = lastResult ? Math.round(lastResult.evaluation.accuracy * 100) : null;
+  const visibleShortcutNotice = visiblePracticeNotice(shortcutNotice);
   const keyPulseClass = keyPulse > 0 ? `key-pulse-${keyPulse % 2 === 0 ? "even" : "odd"}` : "";
   const isAnswerHintVisible = isAnswerVisible;
   const isFirstExposure = practiceTurn?.phase === "first-exposure";
@@ -3286,6 +3348,15 @@ function SentenceGameBoard({
       aria-label="Sentence recall practice"
       className={`game-shell game-shell-${boardState} ${keyPulseClass}`}
       onPointerDown={(event) => {
+        if (
+          isFirstExposure
+          && event.target instanceof Element
+          && event.target.closest(".word-stage")
+        ) {
+          event.preventDefault();
+          onStartRecall();
+          return;
+        }
         if (!isNativeInteractiveTarget(event.target)) {
           onBoardPointerDown();
         }
@@ -3294,6 +3365,9 @@ function SentenceGameBoard({
       role="group"
     >
       <p className="sr-only" id="practice-keyboard-help">
+        {isFirstExposure
+          ? "Begin typing, press Enter, or tap the word track to start recall. "
+          : ""}
         Type the English sentence directly. Press Control Quote for audio, Control M to mark mastered,
         Control N to save to Vocabulary, Enter to check or continue, and Control Semicolon to show the answer or retry.
         Shift Left Arrow goes to the previous sentence, Shift Right Arrow skips, and Control P pauses.
@@ -3303,6 +3377,9 @@ function SentenceGameBoard({
         {isCorrecting
           ? `Attempt ${sessionStats.attempts}. Incorrect words cleared. Focus moved to the first correction point.`
           : ""}
+      </p>
+      <p aria-live="polite" className="sr-only">
+        {shortcutNotice && !visibleShortcutNotice ? shortcutNotice : ""}
       </p>
       <input
         aria-describedby="practice-keyboard-help"
@@ -3321,7 +3398,6 @@ function SentenceGameBoard({
           isPaused
           || isSubmitting
           || (isUpdatingStatus && !isStartingRecallCapture)
-          || (isFirstExposure && !isStartingRecallCapture)
           || lastResult?.evaluation.outcome === "perfect"
         }
         ref={inputRef}
@@ -3440,31 +3516,7 @@ function SentenceGameBoard({
         <span style={{ width: `${Math.max(4, progress)}%` }} />
       </div>
 
-      <div className="practice-status-band">
-        <div className="game-prompt">
-          <span>Prompt</span>
-          <p>{activeItem.card.prompt}</p>
-        </div>
-        <div className={`game-result game-result-${boardState}`} aria-live="polite" aria-atomic="true">
-          <strong>
-            {lastResult
-              ? lastGrade
-                ? labelForGrade(lastGrade)
-                : labelForOutcome(lastResult.evaluation.outcome)
-              : isPaused
-                ? "Practice paused"
-                : practiceTurn
-                  ? labelForPracticePhase(practiceTurn.phase)
-                  : "Preparing recall"}
-          </strong>
-          <span>
-            {shortcutNotice ?? (lastResult
-              ? `${lastResult.evaluation.message} ${accuracy}% aligned.`
-              : answer
-                ? "Keep going"
-                : "Ready when you are")}
-          </span>
-        </div>
+      <div className={`practice-focus-shell practice-focus-shell-${supportMode} ${isFirstExposure ? "is-first-exposure" : ""}`}>
         {failedOperation?.locksPractice && (
           <div aria-live="assertive" className="practice-operation-error" role="alert">
             <span>{failedOperation.message}</span>
@@ -3473,17 +3525,12 @@ function SentenceGameBoard({
             </button>
           </div>
         )}
-      </div>
-
-      <div className={`practice-focus-shell practice-focus-shell-${supportMode} ${isFirstExposure ? "is-first-exposure" : ""}`}>
         <div className={`practice-support-slot ${showsLearningSupport ? "" : "is-empty"}`}>
           {practiceTurn && showsLearningSupport ? (
             <LearningSupportPanel
               card={activeItem.card}
-              disabled={isSubmitting || isUpdatingStatus}
               exposureStyle={quickStartExposureStyle}
               mode={supportMode}
-              onStartRecall={onStartRecall}
               showAnswer={showsRecallAnswer}
               suppressFullTarget={suppressRestoredTarget}
               supportLevel={practiceTurn.supportLevelUsed}
@@ -3502,6 +3549,29 @@ function SentenceGameBoard({
               <span>Press Control P or use the pause button to resume.</span>
             </div>
           )}
+
+          <div className="practice-stage-copy">
+            <p className="practice-stage-prompt">{activeItem.card.prompt}</p>
+            {(lastResult || visibleShortcutNotice) && (
+              <div
+                aria-atomic="true"
+                aria-live="polite"
+                className="practice-stage-feedback"
+                data-state={boardState}
+              >
+                {lastResult && (
+                  <strong>
+                    {lastGrade
+                      ? labelForGrade(lastGrade)
+                      : labelForOutcome(lastResult.evaluation.outcome)}
+                  </strong>
+                )}
+                <span>
+                  {visibleShortcutNotice ?? `${lastResult?.evaluation.message ?? ""} ${accuracy}% aligned.`}
+                </span>
+              </div>
+            )}
+          </div>
 
           <div className="word-track">
             {preview?.tokens.map((token, index) => {
@@ -4045,6 +4115,30 @@ export function recallSupportSavedNotice(
     return null;
   }
   return `Support level ${level} recorded. This turn is Guided Recall.`;
+}
+
+const VISUALLY_REDUNDANT_PRACTICE_NOTICES = new Set([
+  "Answer shown.",
+  "Answer shown. Type it exactly for instructional completion.",
+  "Answer hidden. The support evidence remains recorded.",
+  "First exposure complete. Rebuild the sentence in the word track; use Answer only if you need support.",
+  "Moved to mastered. It has left the active queue.",
+  "Practice paused.",
+  "Practice resumed.",
+  "Removed from Vocabulary.",
+  "Saved to Vocabulary.",
+]);
+
+export function visiblePracticeNotice(notice: string | null): string | null {
+  if (
+    !notice
+    || VISUALLY_REDUNDANT_PRACTICE_NOTICES.has(notice)
+    || /^Support level \d+ recorded\./.test(notice)
+  ) {
+    return null;
+  }
+
+  return notice;
 }
 
 export function recallSupportSaveFailureCopy(

@@ -4,6 +4,7 @@ import {
   createPracticeTurn,
   planIndependentRequeue,
   resolveInitialPracticeTurn,
+  shouldAutomaticallyRevealAnswer,
 } from "./PracticeTurn";
 
 describe("PracticeTurn support evidence", () => {
@@ -97,5 +98,33 @@ describe("PracticeTurn support evidence", () => {
     });
 
     expect(plan).toMatchObject({ inserted: false, pending: true });
+  });
+});
+
+describe("PracticeTurn automatic Answer Reveal", () => {
+  it("reveals after the third non-perfect submission", () => {
+    expect(shouldAutomaticallyRevealAnswer({
+      answerWasRevealed: false,
+      outcome: "retry",
+      submissionIndex: 1,
+    })).toBe(false);
+    expect(shouldAutomaticallyRevealAnswer({
+      answerWasRevealed: false,
+      outcome: "close",
+      submissionIndex: 2,
+    })).toBe(true);
+  });
+
+  it("does not reveal after a perfect or already-assisted submission", () => {
+    expect(shouldAutomaticallyRevealAnswer({
+      answerWasRevealed: false,
+      outcome: "perfect",
+      submissionIndex: 2,
+    })).toBe(false);
+    expect(shouldAutomaticallyRevealAnswer({
+      answerWasRevealed: true,
+      outcome: "retry",
+      submissionIndex: 2,
+    })).toBe(false);
   });
 });

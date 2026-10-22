@@ -15,7 +15,7 @@ async function enterStandardStarterRecall(page: Page): Promise<void> {
   await expect(page.getByLabel("Quick Start, step 1 of 6")).toBeVisible();
   await page.getByRole("button", { name: "Skip Quick Start" }).click();
   await expect(page.getByLabel(/Quick Start, step/)).toHaveCount(0);
-  await page.getByRole("button", { name: "Start recall" }).click();
+  await page.getByLabel("Type the target sentence").press("Enter");
   await expect(page.getByLabel("First exposure")).toHaveCount(0);
 }
 
@@ -154,7 +154,7 @@ for (const viewport of PRACTICE_FIT_VIEWPORTS) {
   });
 }
 
-test("keeps First Exposure as one grammar row plus its required start action", async ({ page }) => {
+test("keeps First Exposure to one grammar row and starts recall from the word track", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 720 });
   await openReadyApp(page, STARTER_LESSON_URL);
   await page.getByRole("button", { name: "Skip Quick Start" }).click();
@@ -169,13 +169,17 @@ test("keeps First Exposure as one grammar row plus its required start action", a
   await expect(panel.locator(".learning-support-target-form")).toHaveCount(0);
   await expect(page.getByRole("list", { name: "Sentence structure map" })).toBeVisible();
   await expect(page.locator(".sentence-grammar-map").getByText("你好", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Start recall" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Start recall" })).toHaveCount(0);
+  await expect(page.getByLabel("Type the target sentence")).toBeEditable();
   await expect(page.getByLabel("Practice shortcuts")).toBeVisible();
   await expectNoHorizontalPageOverflow(page, "First Exposure grammar map");
   expect(await page.evaluate(() => Math.max(
     document.documentElement.scrollHeight,
     document.body.scrollHeight,
   ) - window.innerHeight)).toBeLessThanOrEqual(1);
+
+  await page.getByLabel("Sentence word track").click();
+  await expect(page.getByLabel("First exposure")).toHaveCount(0);
 });
 
 for (const scope of PRACTICE_SCOPE_DEEP_LINKS) {
@@ -503,7 +507,7 @@ test("a Progress weak card opens Focused voluntary practice without changing Rev
   await expect(page).toHaveURL(/view=practice.*scope=focused.*practiceCard=sf-001/);
   const board = page.getByLabel("Sentence recall practice");
   await expect(board.getByText("Focused Practice", { exact: true })).toBeVisible();
-  await expect(board.getByText("Voluntary practice", { exact: true }).first()).toBeVisible();
+  await expect(board.getByText(/Stage 3 · Voluntary practice/)).toBeVisible();
 
   const capture = page.getByLabel("Type the target sentence");
   await capture.fill("Hello, my name is Emma.");
@@ -780,7 +784,7 @@ test("Quick Start restores its step, sentence, and draft, then wins root routing
 
   await expect(page.getByLabel("Quick Start, step 1 of 6")).toBeVisible();
   await expect(page.getByLabel("First exposure")).toBeVisible();
-  await page.getByRole("button", { name: "Start recall" }).click();
+  await page.getByLabel("Type the target sentence").press("Enter");
 
   await page.reload();
   await expectAppReady(page);
@@ -911,7 +915,7 @@ test("a stale active checkpoint cannot outrank due Review on the bare root", asy
   await expect(page).not.toHaveURL(/scope=lesson/);
   const board = page.getByLabel("Sentence recall practice");
   await expect(board.getByText("Review", { exact: true })).toBeVisible();
-  await expect(board.getByText("Review recall", { exact: true }).first()).toBeVisible();
+  await expect(board.getByText(/Stage 1 · Review recall/)).toBeVisible();
   await expect.poll(async () => (
     await readUtterLoopIndexedDbRecord(page, "practiceSessionCheckpoints", "active")
   )?.scope).toEqual({ kind: "review" });
@@ -949,7 +953,7 @@ test("root Practice defaults to due Review after Quick Start is dismissed", asyn
   await expect(page.getByLabel(/Quick Start, step/)).toHaveCount(0);
   const board = page.getByLabel("Sentence recall practice");
   await expect(board.getByText("Review", { exact: true })).toBeVisible();
-  await expect(board.getByText("Review recall", { exact: true }).first()).toBeVisible();
+  await expect(board.getByText(/Stage 1 · Review recall/)).toBeVisible();
   await expect(page.getByText("你好，我叫艾玛。", { exact: true })).toBeVisible();
 });
 
