@@ -24,6 +24,7 @@ import type {
 import { ConfirmationDialog } from "./ConfirmationDialog";
 import { FullBackupControls } from "./FullBackupControls";
 import { validateFullBackup } from "../../domain/backup/validateFullBackup";
+import { resolvePreferredSpeechVoice, speechVoiceSelectionValue } from "../preferences/personalizationPreferences";
 
 interface SettingsViewProps {
   controller: TrainingController;
@@ -108,11 +109,10 @@ export function PersonalizationSettings({
   speechPreviewStatus,
   speechVoices,
 }: PersonalizationSettingsProps) {
-  const isSavedVoiceUnavailable = Boolean(
-    preferences.speechVoiceUri
-    && !speechVoices.some((voice) => voice.voiceURI === preferences.speechVoiceUri),
-  );
-  const selectedSpeechVoiceUri = preferences.speechVoiceUri ?? "";
+  const selectedVoice = resolvePreferredSpeechVoice(speechVoices, preferences.speechVoiceUri);
+  const isSavedVoiceUnavailable = Boolean(preferences.speechVoiceUri && !selectedVoice);
+  const selectedSpeechVoiceUri = selectedVoice
+    ? speechVoiceSelectionValue(selectedVoice) : preferences.speechVoiceUri ?? "";
 
   return (
     <section
@@ -189,7 +189,7 @@ export function PersonalizationSettings({
                 </option>
               )}
               {speechVoices.map((voice) => (
-                <option key={voice.voiceURI} value={voice.voiceURI}>
+                <option key={speechVoiceSelectionValue(voice)} value={speechVoiceSelectionValue(voice)}>
                   {voice.name} · {voice.lang}
                 </option>
               ))}

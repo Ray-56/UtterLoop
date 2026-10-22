@@ -35,7 +35,7 @@ describe("PersonalizationSettings", () => {
     expect(html).toContain('<label for="pronunciation-voice">Pronunciation voice</label>');
     expect(html).toMatch(/<select[^>]+id="pronunciation-voice"/);
     expect(html).toContain('<option value="">Automatic · system English voice</option>');
-    expect(html).toContain('<option value="en-gb-1" selected="">Serena · en-GB</option>');
+    expect(html).toMatch(/<option value="utterloop:voice:v1:[^"]+" selected="">Serena · en-GB<\/option>/);
     expect(html).toContain("Preview voice");
     expect(html).toContain("Key sounds stay separate");
     expect(html).toContain('aria-live="polite"');
@@ -65,6 +65,27 @@ describe("PersonalizationSettings", () => {
     expect(unavailableOption).toContain('value="missing-voice"');
     expect(unavailableOption).toContain('disabled=""');
     expect(unavailableOption).toContain('selected=""');
+  });
+
+  it("gives voices with empty native URIs distinct nonempty selections", () => {
+    const voices = [
+      { voiceURI: "", name: "kal", lang: "en-US", localService: false, default: true },
+      { voiceURI: "", name: "slt", lang: "en-US", localService: false, default: false },
+    ];
+    const html = renderToStaticMarkup(<PersonalizationSettings
+      isPreferenceSavePending={false} isSpeechSupported
+      onFingerGuideModeChange={vi.fn()} onRetryPreferenceSave={vi.fn()} onPreviewVoice={vi.fn()}
+      onSpeechVoiceChange={vi.fn()} onThemeChange={vi.fn()} preferenceSaveError={null}
+      preferences={{ fingerGuideMode: "auto", theme: "system",
+        speechVoiceUri: 'utterloop:voice:v1:["","slt","en-US",false]' }}
+      speechPreviewStatus={null} speechVoices={voices}
+    />);
+    const options = [...html.matchAll(/<option[^>]*value="([^"]*)"[^>]*>/g)].map((match) => match[1]);
+    expect(options).toHaveLength(3);
+    expect(new Set(options).size).toBe(3);
+    expect(options.slice(1).every(Boolean)).toBe(true);
+    expect(html).toMatch(/<option[^>]*selected=""[^>]*>slt · en-US<\/option>/);
+    expect(html).not.toContain("Saved voice unavailable");
   });
 
   it("shows a failed preference save with an explicit retry action", () => {

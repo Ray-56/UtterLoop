@@ -18,6 +18,7 @@ export interface SpeechVoiceDescriptor {
   name: string;
   lang: string;
   default: boolean;
+  localService?: boolean;
 }
 
 interface StoredPersonalizationPreferences extends PersonalizationPreferences {
@@ -94,6 +95,7 @@ export function resolveEffectiveTheme(
 }
 
 export function listEnglishSpeechVoices<T extends SpeechVoiceDescriptor>(voices: readonly T[]): T[] {
+  const seen = new Set<string>();
   return voices
     .filter((voice) => /^en(?:-|$)/i.test(voice.lang))
     .sort((left, right) => {
@@ -102,7 +104,18 @@ export function listEnglishSpeechVoices<T extends SpeechVoiceDescriptor>(voices:
       }
 
       return left.lang.localeCompare(right.lang) || left.name.localeCompare(right.name);
+    })
+    .filter((voice) => {
+      const selection = speechVoiceSelectionValue(voice);
+      if (seen.has(selection)) return false;
+      seen.add(selection);
+      return true;
     });
+}
+
+export function speechVoiceSelectionValue(voice: SpeechVoiceDescriptor): string {
+  // Native WebKit voices can share an empty URI; default is a changing preference, not identity.
+  return `utterloop:voice:v1:${JSON.stringify([voice.voiceURI, voice.name, voice.lang, voice.localService ?? null])}`;
 }
 
 export function resolvePreferredSpeechVoice<T extends SpeechVoiceDescriptor>(
@@ -113,7 +126,8 @@ export function resolvePreferredSpeechVoice<T extends SpeechVoiceDescriptor>(
     return null;
   }
 
-  return voices.find((voice) => voice.voiceURI === preferredVoiceUri) ?? null;
+  return voices.find((voice) => speechVoiceSelectionValue(voice) === preferredVoiceUri)
+    ?? voices.find((voice) => voice.voiceURI === preferredVoiceUri) ?? null;
 }
 
 function isThemePreference(value: unknown): value is ThemePreference {
