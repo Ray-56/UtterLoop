@@ -32,10 +32,17 @@ export default defineConfig({
       use: { ...devices["Desktop Safari"] },
     },
   ],
-  webServer: {
+  webServer: [{
     command: `npm run dev -- --host 127.0.0.1 --port ${port} --strictPort`,
     url: baseURL,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
-  },
+  }, {
+    // Repeated full-page layout navigation should exercise deployed bundles.
+    // Unbundled development imports exhaust Chromium requests on Linux runners.
+    command: "npx vite build --base / --outDir node_modules/.cache/responsive-dist && npx vite preview --base / --outDir node_modules/.cache/responsive-dist --host 127.0.0.1 --port 4175 --strictPort",
+    url: "http://127.0.0.1:4175",
+    reuseExistingServer: false,
+    timeout: 120_000,
+  }],
 });

@@ -613,31 +613,35 @@ test("switches between explicit light and dark themes", async ({ page }) => {
   await expect(page.getByRole("radio", { name: /Dark/ })).toBeChecked();
 });
 
-for (const theme of ["light", "dark"] as const) {
-  test(`${theme} theme has no horizontal overflow across supported viewports`, async ({ page }) => {
-    await page.setViewportSize({ width: 1440, height: 1000 });
-    await openReadyApp(page, "/?view=settings");
+test.describe("production responsive layout", () => {
+  test.use({ baseURL: "http://127.0.0.1:4175" });
 
-    const themeRadio = page.getByRole("radio", {
-      name: theme === "light" ? /Light/ : /Dark/,
-    });
-    await themeRadio.check();
-    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
-    await expect(themeRadio).toBeEnabled();
+  for (const theme of ["light", "dark"] as const) {
+    test(`${theme} theme has no horizontal overflow across supported viewports`, async ({ page }) => {
+      await page.setViewportSize({ width: 1440, height: 1000 });
+      await openReadyApp(page, "/?view=settings");
 
-    for (const viewport of RESPONSIVE_VIEWPORTS) {
-      await page.setViewportSize(viewport);
-      for (const route of RESPONSIVE_ROUTES) {
-        await openReadyApp(page, route);
-        await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
-        await expectNoHorizontalPageOverflow(
-          page,
-          `${theme} ${viewport.width}px ${route}`,
-        );
+      const themeRadio = page.getByRole("radio", {
+        name: theme === "light" ? /Light/ : /Dark/,
+      });
+      await themeRadio.check();
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      await expect(themeRadio).toBeEnabled();
+
+      for (const viewport of RESPONSIVE_VIEWPORTS) {
+        await page.setViewportSize(viewport);
+        for (const route of RESPONSIVE_ROUTES) {
+          await openReadyApp(page, route);
+          await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+          await expectNoHorizontalPageOverflow(
+            page,
+            `${theme} ${viewport.width}px ${route}`,
+          );
+        }
       }
-    }
-  });
-}
+    });
+  }
+});
 
 test("Reset learning progress can be cancelled and restores focus to its opener", async ({ page }) => {
   await openReadyApp(page, "/?view=settings");
