@@ -1,7 +1,8 @@
 # Chrome long-history measurements
 
-Re-measured the final frozen application on 2026-10-23, **00:42 Asia/Shanghai**,
-after the Practice checkpoint-readiness guard and ownership-epoch correction.
+Re-measured the final frozen application on 2026-10-23, **01:27 Asia/Shanghai**,
+after the Practice checkpoint-readiness guard, ownership-epoch correction and native voice identity fix and synchronous Studio caret correction.
+The acceptance browser matrix and preview run had finished before this isolated measurement.
 These measurements use the production
 application and real Chrome IndexedDB. They complement the separate
 [fake-indexeddb comparison](../2026-10-22-long-history-performance.md); they do not
@@ -22,30 +23,30 @@ installed. The main acceptance configuration excludes `performance.spec.ts`.
 Running this dedicated config without the opt-in environment variable skips both
 cases, as verified separately.
 
-The final successful command reported **2 passed (7.0s)**. `npm run typecheck` and
+The final successful command reported **2 passed (7.3s)**. `npm run typecheck` and
 `npm run build` also passed. Vite still reports the existing initial-bundle size
 advisory; it has not been suppressed.
 
 Environment: Google Chrome **155.0.8059.85**, headless, Darwin 27.0.0 arm64,
 Node v22.23.3, Playwright 1.62.1, viewport 1280 × 720, time zone Asia/Shanghai.
 There is no device user-agent override. Frozen main asset:
-`index-DDCCUjpG.js`, SHA-256
-`c1498ddd4cf0b54c939c6af7c444d7086d73f87fde4f6058051dd8b8071e179d`.
+`index-CubFWRnI.js`, SHA-256
+`7ec31e3f39d88ec2559415f4182fc0a436671d710747df05357c909867eaa550`.
 Both browser result attachments independently record that exact loaded asset
 in their `mainScript` field. These values come from the final rerun rather than
-relabeling the earlier 00:01 or 00:22 measurements.
+relabeling the earlier 00:01, 00:22, 00:42 or 01:16 measurements.
 
 ## Results
 
 | Synthetic history events | Startup to editable Practice | Enter to durable, visible result | Progress to complete analytics | Seed setup, excluded from interaction times |
 | ---: | ---: | ---: | ---: | ---: |
-| 10,000 | 83 ms | 33 ms | 340 ms | 216 ms |
-| 100,000 | 79 ms | 32 ms | 2,433 ms | 1,905 ms |
+| 10,000 | 84 ms | 40 ms | 341 ms | 299 ms |
+| 100,000 | 69 ms | 31 ms | 2,418 ms | 1,984 ms |
 
 | Synthetic history events | JS heap after startup | JS heap after submission | JS heap after complete analytics |
 | ---: | ---: | ---: | ---: |
-| 10,000 | 9.19 MiB | 12.75 MiB | 19.25 MiB |
-| 100,000 | 9.58 MiB | 13.59 MiB | 62.02 MiB |
+| 10,000 | 9.27 MiB | 12.77 MiB | 19.33 MiB |
+| 100,000 | 9.58 MiB | 13.60 MiB | 45.09 MiB |
 
 Raw measurements, retained outside the source tree in this task's local verification artifacts, were copied directly
 from the test's JSON attachments. Every opt-in run writes the same fields to
@@ -98,7 +99,7 @@ denominators are correctness checks, not learner success-rate evidence.
 
 This same-device run supports the intended separation: normal Practice avoids
 the long-history analytics cost, while opening complete Progress still incurs
-an approximately 2.43-second calculation at 100k rows. It does not establish
+an approximately 2.42-second calculation at 100k rows. It does not establish
 performance on low-end/mobile devices, cold assets, other browsers, or larger
 histories. There is no latency threshold asserted as a universal performance
 guarantee.
