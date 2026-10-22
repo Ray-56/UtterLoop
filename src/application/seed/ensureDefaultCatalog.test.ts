@@ -82,6 +82,32 @@ describe("ensureDefaultCatalog", () => {
     ]);
   });
 
+  it("upgrades authored support without changing stable card identities or rewriting other courses", async () => {
+    const workStudy = defaultCatalog.courses.find((course) => course.id === "work-study-essentials")!;
+    const workStudyIds = workStudy.units.flatMap((unit) => unit.lessons.flatMap((lesson) => lesson.cardIds));
+    const repository = new CatalogRepository(
+      defaultCatalog.learningPaths,
+      defaultCatalog.courses.map((course) => course.id === workStudy.id ? { ...course, revision: 2 } : course),
+      defaultCatalog.cards.map((card) => {
+        if (!workStudyIds.includes(card.id)) return card;
+        const previous = { ...card };
+        delete previous.learningSupport;
+        return previous;
+      }),
+      defaultCatalog.categories,
+    );
+
+    await ensureDefaultCatalog(repository);
+
+    expect(repository.writes).toHaveLength(1);
+    expect(repository.writes[0].courses).toEqual([workStudy]);
+    expect(repository.writes[0].cards.map((card) => card.id)).toEqual(workStudyIds);
+    expect(repository.writes[0].cards.every((card) => card.learningSupport)).toBe(true);
+    expect(repository.writes[0].cards.map((card) => card.english)).toEqual(
+      defaultCatalog.cards.filter((card) => workStudyIds.includes(card.id)).map((card) => card.english),
+    );
+  });
+
   it("refreshes the default learning path when new courses are appended", async () => {
     const currentPath = defaultCatalog.learningPaths[0];
     const previousPath = {

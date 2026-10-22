@@ -2,6 +2,15 @@ import { describe, expect, it } from "vitest";
 import { resolvePracticeTurnForScope } from "./resolvePracticeTurnForScope";
 
 describe("resolvePracticeTurnForScope", () => {
+  it("moves a Return first exposure into guided recall once introduction is saved", () => {
+    const turn = resolvePracticeTurnForScope({
+      id: "turn-return", scope: { kind: "return", minutes: 8 },
+      card: { id: "new", english: "A target sentence.", prompt: "一个提示。", source: "Test", tags: [], acceptableAnswers: [], createdAt: "2026-10-22T00:00:00.000Z", updatedAt: "2026-10-22T00:00:00.000Z" },
+      learningState: { cardId: "new", introducedAt: "2026-10-22T00:00:00.000Z", acquisitionStatus: "needs-guided" },
+      initialPhase: "first-exposure",
+    });
+    expect(turn.phase).toBe("guided-recall");
+  });
   it("starts Focused Practice as voluntary practice", () => {
     const turn = resolvePracticeTurnForScope({
       id: "turn-focused",

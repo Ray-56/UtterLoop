@@ -1,9 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ContextualPracticeLogEntry } from "../../domain/practice/PracticeSessionEvidence";
 import type { ReviewState } from "../../domain/review/ReviewState";
 import type { AppPreferences } from "../../domain/backup/UtterLoopFullBackup";
 import type { TrainingRepository } from "../ports/TrainingRepository";
-import { getTrainingSnapshot } from "./getTrainingSnapshot";
+import { getPracticeSnapshot, getTrainingSnapshot } from "./getTrainingSnapshot";
 
 const category = {
   id: "category-1",
@@ -69,6 +69,35 @@ const card = {
 };
 
 describe("getTrainingSnapshot", () => {
+  it("opens Practice without reading or fabricating historical analytics", async () => {
+    const repository = new BetaSnapshotRepository();
+    const history = vi.spyOn(repository, "listAllPracticeLog");
+    const statistics = vi.spyOn(repository, "getPracticeStatistics");
+    const evidence = vi.spyOn(repository, "listEvidence");
+    const snapshot = await getPracticeSnapshot(repository, new Date("2026-08-01T12:00:00.000Z"));
+
+    expect(snapshot.cards).toEqual([card]);
+    expect(snapshot.progressDashboard).toBeNull();
+    expect(snapshot.betaReadiness).toBeNull();
+    expect(snapshot.analyticsAsOf).toBeNull();
+    expect(snapshot.focusedWeakCardIds).toBeNull();
+    expect(history).not.toHaveBeenCalled();
+    expect(statistics).not.toHaveBeenCalled();
+    expect(evidence).not.toHaveBeenCalled();
+  });
+
+  it("shares one complete history read between Progress and Beta analytics", async () => {
+    const repository = new BetaSnapshotRepository();
+    const statistics = vi.spyOn(repository, "getPracticeStatistics");
+    const snapshot = await getTrainingSnapshot(repository, new Date("2026-08-01T12:00:00.000Z"));
+
+    expect(snapshot.progressDashboard.retention.allTime.totalEvents).toBe(1);
+    expect(snapshot.betaReadiness?.retention.weeklyRetainedIndependentSentences.numerator).toBe(1);
+    expect(snapshot.analyticsAsOf).toBe("2026-08-01T12:00:00.000Z");
+    expect(snapshot.focusedWeakCardIds).toEqual([]);
+    expect(statistics).not.toHaveBeenCalled();
+  });
+
   it("returns independent course and path progress without reviewing untouched cards", async () => {
     const snapshot = await getTrainingSnapshot(new SnapshotRepository(), new Date("2026-07-19T00:00:00.000Z"));
 

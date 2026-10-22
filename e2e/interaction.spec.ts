@@ -10,7 +10,8 @@ import {
 async function enterStarterRecall(page: Page): Promise<void> {
   await openReadyApp(page, STARTER_LESSON_URL);
   await page.getByRole("button", { name: "Skip Quick Start" }).click();
-  await page.getByRole("button", { name: "Start recall" }).click();
+  await expect(page.getByLabel(/Quick Start, step/)).toHaveCount(0);
+  await page.getByLabel("Type the target sentence").press("Enter");
   await expect(page.getByLabel("First exposure")).toHaveCount(0);
 }
 
@@ -104,6 +105,10 @@ test("Answer and Learning Support share a stable slot without moving the word tr
   await expect(combinedPanel.locator(".learning-support-keywords")).toHaveCount(0);
   await expect(combinedPanel.locator(".learning-support-target-form")).toHaveCount(0);
   await expect(supportSlot).not.toHaveClass(/is-empty/);
+  await expect(page.locator(".practice-stage-feedback")).toHaveCount(0);
+  await expect(page.locator('p.sr-only[aria-live="polite"]').filter({
+    hasText: "Answer shown. Type it exactly for instructional completion.",
+  })).toHaveCount(1);
   const revealed = await wordStage.boundingBox();
 
   await capture.press("Control+;");
@@ -112,10 +117,29 @@ test("Answer and Learning Support share a stable slot without moving the word tr
   await expect(page.locator(".sentence-grammar-map")).toHaveCount(0);
   await expect(supportSlot).toHaveClass(/is-empty/);
   await expect(page.getByText("Hello, my name is Emma.", { exact: true })).toHaveCount(0);
+  await expect(page.locator(".practice-stage-feedback")).toHaveCount(0);
+  await expect(page.locator('p.sr-only[aria-live="polite"]').filter({
+    hasText: "Answer hidden. The support evidence remains recorded.",
+  })).toHaveCount(1);
   const hidden = await wordStage.boundingBox();
 
   expect(revealed?.y).toBeCloseTo(before?.y ?? 0, 0);
   expect(hidden?.y).toBeCloseTo(before?.y ?? 0, 0);
+
+  await page.getByRole("button", { name: "Show full finger guide" }).click();
+  await expect(page.locator(".finger-guide-full")).toBeVisible();
+  const expandedBefore = await wordStage.boundingBox();
+
+  await capture.press("Control+;");
+  await expect(combinedPanel).toBeVisible();
+  const expandedRevealed = await wordStage.boundingBox();
+
+  await capture.press("Control+;");
+  await expect(supportSlot).toHaveClass(/is-empty/);
+  const expandedHidden = await wordStage.boundingBox();
+
+  expect(expandedRevealed?.y).toBeCloseTo(expandedBefore?.y ?? 0, 0);
+  expect(expandedHidden?.y).toBeCloseTo(expandedBefore?.y ?? 0, 0);
 
   await page.waitForTimeout(350);
   await page.reload();
@@ -129,6 +153,32 @@ test("Answer and Learning Support share a stable slot without moving the word tr
   await expect(page.getByLabel("Guided recall · level 4")).toBeVisible();
   await expect(page.locator(".sentence-grammar-map")).toBeVisible();
   await expect(page.locator(".sentence-grammar-map").getByText("Emma.", { exact: true })).toBeVisible();
+});
+
+test("the third unsuccessful Check automatically reveals Answer support", async ({ page }) => {
+  await enterStarterRecall(page);
+  const capture = page.getByLabel("Type the target sentence");
+  const wrongAnswer = "Wrong words remain totally incorrect.";
+
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    await capture.fill(wrongAnswer);
+    await capture.press("Enter");
+    await expect(page.getByLabel("Guided recall · level 4")).toHaveCount(0);
+    await expect(page.getByRole("button", {
+      name: "Show answer, shortcut Control plus Semicolon",
+    })).toHaveAttribute("aria-pressed", "false");
+  }
+
+  await capture.fill(wrongAnswer);
+  await capture.press("Enter");
+
+  const answerSupport = page.getByLabel("Guided recall · level 4");
+  await expect(answerSupport).toBeVisible();
+  await expect(answerSupport.getByText("Hello,", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", {
+    name: "Hide answer, shortcut Control plus Semicolon",
+  })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".practice-stage-feedback")).toHaveCount(0);
 });
 
 test("keeps the token grammar map inside the Practice surface on a narrow screen", async ({ page }) => {

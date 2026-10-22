@@ -67,7 +67,7 @@ describe("default course catalog", () => {
           cefrTo: "B1",
         },
         provider: { kind: "original", name: "UtterLoop" },
-        revision: 2,
+        revision: 3,
         tags: ["work", "study", "status updates", "requests", "planning", "feedback"],
       },
       {
@@ -103,7 +103,7 @@ describe("default course catalog", () => {
           cefrTo: "B2",
         },
         provider: { kind: "original", name: "UtterLoop" },
-        revision: 1,
+        revision: 2,
         tags: ["meetings", "discussion", "opinions", "trade-offs", "decisions", "follow-up"],
       },
     ]);

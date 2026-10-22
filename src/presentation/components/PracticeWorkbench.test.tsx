@@ -18,8 +18,22 @@ import {
   retryPendingAudioSave,
   shouldRetryAudioSaveBeforeCommand,
   transitionCheckpointAfterFirstExposure,
+  visiblePracticeNotice,
+  resolveFluencyEntrySource,
   type PracticeFailedOperation,
 } from "./PracticeWorkbench";
+
+describe("optional Fluency Pass entry", () => {
+  it("offers typing only after a correct result or an explicit visible Answer", () => {
+    const hidden = { correctResult: false, corrected: false, answerWasRevealed: false, answerIsVisible: false };
+    expect(resolveFluencyEntrySource(hidden)).toBeNull();
+    expect(resolveFluencyEntrySource({ ...hidden, answerIsVisible: true })).toBeNull();
+    expect(resolveFluencyEntrySource({ ...hidden, answerWasRevealed: true })).toBeNull();
+    expect(resolveFluencyEntrySource({ ...hidden, correctResult: true })).toBe("correct");
+    expect(resolveFluencyEntrySource({ ...hidden, correctResult: true, corrected: true })).toBe("corrected");
+    expect(resolveFluencyEntrySource({ ...hidden, answerIsVisible: true, answerWasRevealed: true })).toBe("revealed");
+  });
+});
 
 describe("PracticeWorkbench blocked content recovery", () => {
   it("fails a blocked Quick Start closed without rendering target content or completion", () => {
@@ -254,6 +268,33 @@ describe("PracticeWorkbench support save feedback", () => {
       "toggle-pause",
     ] as const) {
       expect(shouldRetryAudioSaveBeforeCommand(command)).toBe(false);
+    }
+  });
+});
+
+describe("PracticeWorkbench visible notice filtering", () => {
+  it("keeps routine action confirmations assistive-only", () => {
+    for (const notice of [
+      "Answer shown.",
+      "Answer shown. Type it exactly for instructional completion.",
+      "Answer hidden. The support evidence remains recorded.",
+      "Saved to Vocabulary.",
+      "Removed from Vocabulary.",
+      "Practice paused.",
+      "Practice resumed.",
+      "Support level 4 recorded. This turn is Guided Recall.",
+    ]) {
+      expect(visiblePracticeNotice(notice)).toBeNull();
+    }
+  });
+
+  it("keeps actionable guidance and failures visible", () => {
+    for (const notice of [
+      "Complete every word slot before checking.",
+      "Edit the highlighted words, then check again.",
+      "Your answer is still here. Retry saving this attempt.",
+    ]) {
+      expect(visiblePracticeNotice(notice)).toBe(notice);
     }
   });
 });

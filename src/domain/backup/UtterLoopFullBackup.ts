@@ -10,9 +10,10 @@ import type { ContextualPracticeLogEntry } from "../practice/PracticeSessionEvid
 import type { PracticeSessionEvidence } from "../practice/PracticeSessionEvidence";
 import type { ReviewState } from "../review/ReviewState";
 import type { VocabularyEntry } from "../vocabulary/VocabularyEntry";
+import type { PortableLearningStudio } from "../studio/validateLearningStudio";
 
-export const FULL_BACKUP_SCHEMA_VERSION = 2 as const;
-export const FULL_BACKUP_DATABASE_SCHEMA_VERSION = 6 as const;
+export const FULL_BACKUP_SCHEMA_VERSION = 3 as const;
+export const FULL_BACKUP_DATABASE_SCHEMA_VERSION = 7 as const;
 export const LEGACY_FULL_BACKUP_SCHEMA_VERSION = 1 as const;
 export const LEGACY_FULL_BACKUP_DATABASE_SCHEMA_VERSION = 5 as const;
 
@@ -86,9 +87,9 @@ export interface UtterLoopFullBackupV1 {
 
 export interface UtterLoopFullBackupV2 {
   format: "utterloop-full-backup";
-  schemaVersion: typeof FULL_BACKUP_SCHEMA_VERSION;
+  schemaVersion: 2;
   exportedAt: string;
-  databaseSchemaVersion: typeof FULL_BACKUP_DATABASE_SCHEMA_VERSION;
+  databaseSchemaVersion: 6;
   catalog: FullBackupCatalog;
   learning: Omit<FullBackupLearningV1, "practiceLog"> & {
     practiceLog: ContextualPracticeLogEntry[];
@@ -98,5 +99,11 @@ export interface UtterLoopFullBackupV2 {
   preferences: AppPreferences;
 }
 
-/** Accepted at file-selection boundaries; validation always normalizes to v2. */
-export type UtterLoopFullBackup = UtterLoopFullBackupV1 | UtterLoopFullBackupV2;
+export interface UtterLoopFullBackupV3 extends Omit<UtterLoopFullBackupV2, "schemaVersion" | "databaseSchemaVersion" | "learning"> {
+  schemaVersion: typeof FULL_BACKUP_SCHEMA_VERSION;
+  databaseSchemaVersion: typeof FULL_BACKUP_DATABASE_SCHEMA_VERSION;
+  learning: UtterLoopFullBackupV2["learning"] & { studio: PortableLearningStudio };
+}
+
+/** Accepted at file-selection boundaries; validation always normalizes to v3. */
+export type UtterLoopFullBackup = UtterLoopFullBackupV1 | UtterLoopFullBackupV2 | UtterLoopFullBackupV3;

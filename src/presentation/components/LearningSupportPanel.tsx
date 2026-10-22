@@ -1,4 +1,3 @@
-import { BookOpenCheck } from "lucide-react";
 import type { SentenceCard } from "../../domain/content/SentenceCard";
 import {
   hasCompleteGrammarTokenDetails,
@@ -16,10 +15,8 @@ export function shouldRecordAudioPlaybackAsRecallSupport(
 
 interface LearningSupportPanelProps {
   card: SentenceCard;
-  disabled?: boolean;
   exposureStyle?: "full" | "abbreviated";
   mode: LearningSupportPanelMode;
-  onStartRecall(): void;
   showAnswer?: boolean;
   suppressFullTarget?: boolean;
   supportLevel: LearningSupportLevel;
@@ -27,10 +24,8 @@ interface LearningSupportPanelProps {
 
 export function LearningSupportPanel({
   card,
-  disabled = false,
   exposureStyle = "full",
   mode,
-  onStartRecall,
   showAnswer = false,
   suppressFullTarget = false,
   supportLevel,
@@ -65,20 +60,6 @@ export function LearningSupportPanel({
           </section>
         )}
       </div>
-
-      {mode === "first-exposure" && (
-        <footer className="learning-support-actions">
-          <button
-            className="primary-button"
-            disabled={disabled}
-            onClick={onStartRecall}
-            type="button"
-          >
-            <BookOpenCheck aria-hidden="true" size={17} />
-            Start recall
-          </button>
-        </footer>
-      )}
     </section>
   );
 }

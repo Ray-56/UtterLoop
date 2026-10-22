@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultCatalog } from "../../../application/seed/defaultCatalog";
 import { DexieTrainingRepository } from "./DexieTrainingRepository";
 import { utterLoopDatabase } from "./UtterLoopDatabase";
@@ -7,6 +7,17 @@ import type {
   UtterLoopFullBackupV2,
 } from "../../../domain/backup/UtterLoopFullBackup";
 import type { PracticeSessionCheckpoint } from "../../../application/practice-session/PracticeSessionCheckpoint";
+
+beforeEach(() => {
+  mockTransactionExecution();
+  vi.spyOn(utterLoopDatabase.appMetadata, "get").mockResolvedValue({
+    id: "device", measurementEpoch: "2026-07-31T00:00:00.000Z",
+  });
+  vi.spyOn(utterLoopDatabase.appMetadata, "put").mockResolvedValue("device");
+  vi.spyOn(utterLoopDatabase.learningStudio, "get").mockResolvedValue(undefined);
+  vi.spyOn(utterLoopDatabase.learningStudio, "put").mockResolvedValue("local");
+  vi.spyOn(utterLoopDatabase.learningStudio, "clear").mockResolvedValue();
+});
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -61,6 +72,7 @@ describe("DexieTrainingRepository", () => {
     expect(transaction).toHaveBeenCalledWith(
       "rw",
       [
+        utterLoopDatabase.appMetadata,
         utterLoopDatabase.sentenceLearningStates,
         utterLoopDatabase.reviewStates,
         utterLoopDatabase.practiceLog,
@@ -135,11 +147,13 @@ describe("DexieTrainingRepository", () => {
     expect(transaction).toHaveBeenCalledWith(
       "rw",
       [
+        utterLoopDatabase.appMetadata,
         utterLoopDatabase.sentenceLearningStates,
         utterLoopDatabase.reviewStates,
         utterLoopDatabase.practiceLog,
         utterLoopDatabase.practiceSessionEvidence,
         utterLoopDatabase.practiceSessionCheckpoints,
+        utterLoopDatabase.learningStudio,
       ],
       expect.any(Function),
     );
@@ -262,8 +276,8 @@ describe("DexieTrainingRepository", () => {
     expect(backup.learning.practiceLog).toHaveLength(501);
     expect(backup.preferences).toEqual({ ...preferences, fingerGuideMode: "auto" });
     expect(backup).toMatchObject({
-      schemaVersion: 2,
-      databaseSchemaVersion: 6,
+      schemaVersion: 3,
+      databaseSchemaVersion: 7,
       learning: {
         measurementEpoch: "2026-07-31T00:00:00.000Z",
         practiceSessionEvidence: [],
@@ -345,10 +359,8 @@ describe("DexieTrainingRepository", () => {
 
     expect(transaction).toHaveBeenCalledWith(
       "rw",
-      utterLoopDatabase.courseCategories,
-      utterLoopDatabase.learningPaths,
-      utterLoopDatabase.courses,
-      utterLoopDatabase.sentenceCards,
+      [utterLoopDatabase.appMetadata, utterLoopDatabase.courseCategories,
+        utterLoopDatabase.learningPaths, utterLoopDatabase.courses, utterLoopDatabase.sentenceCards],
       expect.any(Function),
     );
     expect(saveCategories).toHaveBeenCalledWith(defaultCatalog.categories);
@@ -383,6 +395,7 @@ describe("DexieTrainingRepository", () => {
     expect(transaction).toHaveBeenCalledWith(
       "rw",
       [
+        utterLoopDatabase.appMetadata,
         utterLoopDatabase.courseCategories,
         utterLoopDatabase.learningPaths,
         utterLoopDatabase.courses,
@@ -392,8 +405,8 @@ describe("DexieTrainingRepository", () => {
         utterLoopDatabase.practiceLog,
         utterLoopDatabase.vocabularyEntries,
         utterLoopDatabase.appPreferences,
-        utterLoopDatabase.appMetadata,
         utterLoopDatabase.practiceSessionEvidence,
+        utterLoopDatabase.learningStudio,
         utterLoopDatabase.practiceSessionCheckpoints,
       ],
       expect.any(Function),
@@ -405,6 +418,7 @@ describe("DexieTrainingRepository", () => {
     expect(saveMetadata).toHaveBeenCalledWith({
       id: "device",
       measurementEpoch: "2026-08-02T00:00:00.000Z",
+      dataGeneration: 1,
     });
     expect(clearEvidence).toHaveBeenCalledOnce();
     expect(clearCheckpoint).toHaveBeenCalledOnce();
@@ -446,8 +460,7 @@ describe("DexieTrainingRepository", () => {
 
     expect(transaction).toHaveBeenCalledWith(
       "rw",
-      utterLoopDatabase.reviewStates,
-      utterLoopDatabase.practiceLog,
+      [utterLoopDatabase.appMetadata, utterLoopDatabase.reviewStates, utterLoopDatabase.practiceLog],
       expect.any(Function),
     );
     expect(saveReview).toHaveBeenCalledWith(reviewState);
@@ -523,6 +536,7 @@ function fullBackupFixture(): UtterLoopFullBackupV2 {
 
 function durableTables() {
   return [
+    utterLoopDatabase.appMetadata,
     utterLoopDatabase.courseCategories,
     utterLoopDatabase.learningPaths,
     utterLoopDatabase.courses,
@@ -532,8 +546,8 @@ function durableTables() {
     utterLoopDatabase.practiceLog,
     utterLoopDatabase.vocabularyEntries,
     utterLoopDatabase.appPreferences,
-    utterLoopDatabase.appMetadata,
     utterLoopDatabase.practiceSessionEvidence,
+    utterLoopDatabase.learningStudio,
     utterLoopDatabase.practiceSessionCheckpoints,
   ];
 }

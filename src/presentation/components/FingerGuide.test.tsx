@@ -40,7 +40,9 @@ describe("FingerGuide", () => {
     expect(html).toContain('aria-expanded="true"');
     expect(html).toContain("ANSI QWERTY map");
     expect(html).toContain('data-code="Escape"');
-    expect(html).toContain("Primary key and modifier use different highlights");
+    expect(html).toContain(">Compact<");
+    expect(html).not.toContain('class="finger-guide-compact"');
+    expect(html).not.toContain("Primary key and modifier use different highlights");
   });
 
   it("returns to a static home-row reminder while Practice is muted", () => {

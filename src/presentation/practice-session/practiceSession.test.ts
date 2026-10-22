@@ -37,6 +37,8 @@ describe("practice session identity", () => {
     expect(practiceScopeKey({ kind: "vocabulary" })).toBe("vocabulary:all");
     expect(practiceScopeKey({ kind: "focused", cardId: "card-1" }))
       .toBe("focused:card:card-1");
+    expect(practiceScopeKey({ kind: "return", minutes: 3 })).toBe("return:3");
+    expect(practiceScopeKey({ kind: "return", minutes: 8 })).toBe("return:8");
   });
 
   it("makes stable occurrence IDs unique per original position and return", () => {
@@ -66,6 +68,15 @@ describe("practice session identity", () => {
     const focusedFingerprint = catalogFingerprint(focusedScope, original);
     expect(catalogFingerprint(focusedScope, changedRevision)).toBe(focusedFingerprint);
     expect(catalogFingerprint(focusedScope, changedUpdatedAt)).not.toBe(focusedFingerprint);
+  });
+
+  it("fingerprints personal cards outside course outlines for global Return plans", () => {
+    const original = catalog();
+    const personal = { ...original.cards[0], id: "personal-card" };
+    const withPersonal = { ...original, cards: [...original.cards, personal] };
+    const changed = { ...original, cards: [...original.cards, { ...personal, updatedAt: "2026-10-22T00:00:00.000Z" }] };
+    expect(catalogFingerprint({ kind: "return", minutes: 3 }, withPersonal))
+      .not.toBe(catalogFingerprint({ kind: "return", minutes: 3 }, changed));
   });
 });
 
@@ -197,6 +208,15 @@ describe("practice session reducer", () => {
 });
 
 describe("checkpoint compatibility and durable reconciliation", () => {
+  it("preserves the local data generation while rejecting invalid generation tokens", () => {
+    const checkpoint = { ...revisionedCheckpoint(), dataGeneration: 7 };
+    expect(validatePracticeSessionCheckpoint(checkpoint)).toMatchObject({
+      ok: true, checkpoint: { dataGeneration: 7 },
+    });
+    expect(validatePracticeSessionCheckpoint({ ...checkpoint, dataGeneration: -1 })).toMatchObject({ ok: false });
+    expect(validatePracticeSessionCheckpoint({ ...checkpoint, dataGeneration: NaN })).toMatchObject({ ok: false });
+  });
+
   it("validates and resumes a target-free schema-v2 checkpoint", () => {
     const checkpoint = revisionedCheckpoint();
 

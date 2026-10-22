@@ -14,6 +14,7 @@ export function resolvePracticeRoute(
   scope: PracticeScope,
   catalog: RouteCatalog,
 ): PracticeRouteResolution {
+  if (scope.kind === "return") return { kind: "available" };
   if (scope.kind === "focused") {
     return catalog.cardIds.has(scope.cardId)
       ? { kind: "available" }

@@ -20,7 +20,7 @@ function referencedCourses(scope: PracticeSessionScope, catalog: PracticeSession
     return [];
   }
 
-  const selectedCourseId = scope.courseId;
+  const selectedCourseId = scope.kind === "return" ? undefined : scope.courseId;
   if (selectedCourseId) {
     const course = catalog.courses.find((candidate) => candidate.id === selectedCourseId);
     if (!course) throw new Error(`Practice scope references missing Course: ${selectedCourseId}`);
@@ -44,6 +44,7 @@ function referencedCourses(scope: PracticeSessionScope, catalog: PracticeSession
 
 function referencedCards(scope: PracticeSessionScope, catalog: PracticeSessionCatalog) {
   const cardById = new Map(catalog.cards.map((card) => [card.id, card]));
+  if (scope.kind === "return") return [...catalog.cards].sort((left, right) => left.id.localeCompare(right.id));
   if (scope.kind === "focused") {
     const card = cardById.get(scope.cardId);
     if (!card) throw new Error(`Practice scope references missing Card: ${scope.cardId}`);

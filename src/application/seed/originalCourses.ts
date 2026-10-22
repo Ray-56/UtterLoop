@@ -1,6 +1,7 @@
 import type { SentenceCard } from "../../domain/content/SentenceCard";
 import type { ContentLicense, Course } from "../../domain/curriculum/Course";
 import { starterLearningSupportByCardId } from "./starterLearningSupport";
+import { workStudyLearningSupportByCardId } from "./workStudyLearningSupport";
 
 const originalContentSource = "UtterLoop Original";
 const seedCreatedAt = "2026-07-19T00:00:00.000Z";
@@ -88,7 +89,7 @@ export const originalCourses: Course[] = [
       kind: "original",
       name: "UtterLoop",
     },
-    revision: 2,
+    revision: 3,
     license: CC0_CONTENT_LICENSE,
     units: [
       {
@@ -268,6 +269,7 @@ export const originalCourseCards: SentenceCard[] = [
     "The data is ready for review.",
     "数据已经准备好，可以审阅了。",
     ["status", "data", "review"],
+    ["The data are ready for review."],
   ),
   originalCard(
     "wse-003",
@@ -284,7 +286,7 @@ export const originalCourseCards: SentenceCard[] = [
   originalCard(
     "wse-005",
     "I should have an update by noon.",
-    "我中午前应该会有最新进展。",
+    "最晚到中午，我应该会有最新进展。",
     ["status", "deadlines", "modal"],
   ),
   originalCard(
@@ -388,7 +390,7 @@ function originalCard(
   tags: string[],
   acceptableAnswers: string[] = [],
 ): SentenceCard {
-  const learningSupport = starterLearningSupportByCardId[id];
+  const learningSupport = starterLearningSupportByCardId[id] ?? workStudyLearningSupportByCardId[id];
 
   return {
     id,
@@ -399,6 +401,8 @@ function originalCard(
     acceptableAnswers,
     ...(learningSupport ? { learningSupport } : {}),
     createdAt: seedCreatedAt,
-    updatedAt: learningSupport ? "2026-08-02T00:00:00.000Z" : seedCreatedAt,
+    updatedAt: workStudyLearningSupportByCardId[id]
+      ? "2026-10-22T00:00:00.000Z"
+      : learningSupport ? "2026-08-02T00:00:00.000Z" : seedCreatedAt,
   };
 }

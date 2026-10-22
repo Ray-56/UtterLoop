@@ -92,4 +92,29 @@ describe("personalization preferences", () => {
     expect(resolvePreferredSpeechVoice(englishVoices, "missing-voice")).toBeNull();
     expect(resolvePreferredSpeechVoice(englishVoices, null)).toBeNull();
   });
+
+  it("distinguishes empty and shared native voice URIs and keeps legacy selections", () => {
+    const voices = [
+      { voiceURI: "", name: "kal", lang: "en-US", localService: false, default: true },
+      { voiceURI: "", name: "slt", lang: "en-US", localService: false, default: false },
+      { voiceURI: "shared", name: "English", lang: "en-GB", localService: false, default: false },
+      { voiceURI: "shared", name: "English", lang: "en-GB", localService: true, default: false },
+    ];
+    for (const voice of voices) {
+      const selection = `utterloop:voice:v1:${JSON.stringify([
+        voice.voiceURI, voice.name, voice.lang, voice.localService,
+      ])}`;
+      expect(resolvePreferredSpeechVoice(voices, selection)).toBe(voice);
+      expect(resolvePreferredSpeechVoice([...voices].reverse(), selection)).toBe(voice);
+    }
+    expect(resolvePreferredSpeechVoice(voices, "shared")).toBe(voices[2]);
+    expect(resolvePreferredSpeechVoice(voices, "")).toBeNull();
+  });
+
+  it("lists identical voice descriptions once without merging distinct local and remote voices", () => {
+    const remote = { voiceURI: "", name: "English", lang: "en-US", localService: false, default: false };
+    const local = { ...remote, localService: true };
+    const systemDefault = { ...remote, default: true };
+    expect(listEnglishSpeechVoices([remote, local, systemDefault])).toEqual([systemDefault, local]);
+  });
 });

@@ -1,6 +1,6 @@
 # Course Content Licenses
 
-This document covers the sentence, prompt, and course metadata shipped in UtterLoop's default course catalog. It does not license the application source code, third-party dependencies, or any name, logo, or trademark.
+This document covers the sentences, prompts, authored Learning Support, and course metadata shipped in UtterLoop's default course catalog, together with the original Learning Studio exercise content. It does not license the application source code, third-party dependencies, learner-owned personal content, or any name, logo, or trademark.
 
 ## UtterLoop Original Courses
 
@@ -12,7 +12,9 @@ The following courses are original UtterLoop content:
 - **Social Plans & Stories**
 - **Meetings & Decisions**
 
-Their sentences, prompts, and course metadata are dedicated to the public domain under [CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/). Attribution is not required.
+Their sentences, prompts, authored Learning Support, and course metadata are dedicated to the public domain under [CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/). Attribution is not required.
+
+The original Context Cues, Sentence Families, Rehearsal Tasks and contrast-practice examples authored for Learning Studio use the same CC0 dedication. A learner's Personal Sentences remain learner-owned; adding or backing them up does not apply this dedication to them.
 
 ## VOA Learning English Course
 

@@ -30,6 +30,7 @@ export type PracticeSessionCheckpointSeed = Omit<
   | "engagedAt"
   | "revision"
   | "updatedAt"
+  | "dataGeneration"
 >;
 
 export interface PracticeSessionLifecycleDependencies {
@@ -96,6 +97,11 @@ export class PracticeSessionLifecycle {
   ) {}
 
   async open(input: OpenPracticeSessionInput): Promise<OpenedPracticeSession> {
+    return this.openWithConflictRetry(input, 0);
+  }
+
+  private async openWithConflictRetry(input: OpenPracticeSessionInput, retries: number): Promise<OpenedPracticeSession> {
+    const dataGeneration = await this.store.initializeDataAccess?.();
     const active = await this.store.loadActiveCheckpoint();
     if (isV2Checkpoint(active)) {
       if (!isStructurallyValidV2Checkpoint(active)) {
@@ -128,7 +134,10 @@ export class PracticeSessionLifecycle {
       } else if (isCompatibleV2Checkpoint(active, input.checkpoint, input.entryPoint)) {
         return {
           status: "resumed",
-          checkpoint: structuredClone(active),
+          checkpoint: {
+            ...structuredClone(active),
+            ...(dataGeneration === undefined ? {} : { dataGeneration }),
+          },
           contextByOccurrenceId: contextsFor(active),
         };
       } else if (active.engagedAt) {
@@ -158,7 +167,9 @@ export class PracticeSessionLifecycle {
           this.dependencies.createId("round"),
           openedAt,
         );
+        if (dataGeneration !== undefined) checkpoint.dataGeneration = dataGeneration;
         const commit = await this.store.commitCheckpoint(checkpoint);
+        if (commit === "conflict" && retries < 2) return this.openWithConflictRetry(input, retries + 1);
         if (commit !== "stored" && commit !== "unchanged") {
           throw new Error(`Legacy Practice session could not be upgraded: ${commit}`);
         }
@@ -174,6 +185,7 @@ export class PracticeSessionLifecycle {
     const checkpoint: PracticeSessionCheckpointV2 = {
       ...structuredClone(input.checkpoint),
       schemaVersion: 2,
+      ...(dataGeneration === undefined ? {} : { dataGeneration }),
       sessionId: this.dependencies.createId("session"),
       roundId: this.dependencies.createId("round"),
       entryPoint: input.entryPoint,
@@ -183,6 +195,7 @@ export class PracticeSessionLifecycle {
       updatedAt: openedAt,
     };
     const commit = await this.store.commitCheckpoint(checkpoint);
+    if (commit === "conflict" && retries < 2) return this.openWithConflictRetry(input, retries + 1);
     if (commit !== "stored" && commit !== "unchanged") {
       throw new Error(`Practice session could not be opened: ${commit}`);
     }
@@ -229,6 +242,9 @@ export class PracticeSessionLifecycle {
       });
       const status = await this.store.commitTerminal({
         evidence,
+        ...(input.checkpoint.dataGeneration === undefined
+          ? {}
+          : { dataGeneration: input.checkpoint.dataGeneration }),
         ...(input.quickStartPreference
           ? { quickStartPreference: input.quickStartPreference }
           : {}),
@@ -553,6 +569,11 @@ function queueReasonForLegacyOccurrence(
   checkpoint: PracticeSessionCheckpointV1,
   occurrence: ResolvedPracticeOccurrence,
 ) {
+  if (checkpoint.scope.kind === "return") {
+    return occurrence.turn.phase === "review-recall" ? "due-review" as const
+      : occurrence.turn.phase === "voluntary-practice" ? "voluntary-practice" as const
+        : "new-learning" as const;
+  }
   if (checkpoint.scope.kind === "review") return "due-review" as const;
   if (checkpoint.scope.kind === "focused") return "focused-practice" as const;
   if (checkpoint.scope.kind === "lesson" && checkpoint.scope.mode === "learn"

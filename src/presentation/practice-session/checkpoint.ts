@@ -15,6 +15,7 @@ import type {
 } from "./model";
 import { practiceOccurrenceId } from "./occurrence";
 import { practiceScopeKey } from "./practiceScopeKey";
+import { RETURN_PLAN_BUDGETS } from "../../domain/studio/returnPlan";
 
 const CHECKPOINT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1_000;
 const MINIMUM_SUPPORT_LEVEL: Record<RecallSupportKind, RecallSupportLevel> = {
@@ -91,7 +92,7 @@ export function validatePracticeSessionCheckpoint(value: unknown): ValidatePract
       "stats",
       "updatedAt",
       ...(schemaVersion === 2
-        ? ["sessionId", "roundId", "entryPoint", "startedAt", "engagedAt", "revision", "round"]
+        ? ["sessionId", "roundId", "entryPoint", "startedAt", "engagedAt", "revision", "round", "dataGeneration"]
         : ["commandRecovery"]),
     ], "checkpoint");
     const scope = parseScope(value.scope);
@@ -99,6 +100,11 @@ export function validatePracticeSessionCheckpoint(value: unknown): ValidatePract
       (item, index) => parseOccurrence(item, `itinerary[${index}]`, schemaVersion),
     );
     if (itinerary.length === 0) throw new Error("itinerary must contain at least one occurrence.");
+    if (scope.kind === "return" && (
+      itinerary.length > RETURN_PLAN_BUDGETS[scope.minutes].items
+      || itinerary.some((occurrence) => occurrence.returnIndex > 0)
+      || new Set(itinerary.map((occurrence) => occurrence.cardId)).size !== itinerary.length
+    )) throw new Error("Return itinerary exceeds its bounded sentence plan.");
     assertUnique(itinerary.map((occurrence) => occurrence.id), "itinerary occurrence ID");
     const draft = string(value.draft, "draft", true);
     const selectionStart = safeInteger(value.selectionStart, "selectionStart");
@@ -162,6 +168,7 @@ function parseRevisionedCheckpoint(
     startedAt,
     engagedAt,
     revision: safeInteger(value.revision, "revision"),
+    ...(value.dataGeneration === undefined ? {} : { dataGeneration: safeInteger(value.dataGeneration, "dataGeneration") }),
     round: parseRound(value.round, itinerary),
   };
 }
@@ -336,7 +343,7 @@ function cardIdsForScope(scope: PracticeSessionScope, catalog: PracticeSessionCa
     ));
     return belongsToCourse ? new Set([scope.cardId]) : new Set();
   }
-  const courseId = scope.courseId;
+  const courseId = scope.kind === "return" ? undefined : scope.courseId;
   if (!courseId) return new Set(catalog.cards.map((card) => card.id));
   const course = catalog.courses.find((candidate) => candidate.id === courseId);
   if (!course) return new Set();
@@ -350,6 +357,12 @@ function cardIdsForScope(scope: PracticeSessionScope, catalog: PracticeSessionCa
 function parseScope(value: unknown): PracticeSessionScope {
   const scope = record(value, "scope");
   const kind = string(scope.kind, "scope.kind");
+  if (kind === "return") {
+    if (scope.minutes !== 3 && scope.minutes !== 8 && scope.minutes !== 15) {
+      throw new Error("scope.minutes must be 3, 8, or 15.");
+    }
+    return { kind, minutes: scope.minutes };
+  }
   if (kind === "lesson") {
     const mode = scope.mode;
     if (mode !== "learn" && mode !== "replay") throw new Error("scope.mode is invalid.");

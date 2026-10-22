@@ -148,7 +148,7 @@ export const additionalCourses: Course[] = [
       kind: "original",
       name: "UtterLoop",
     },
-    revision: 1,
+    revision: 2,
     license: CC0_CONTENT_LICENSE,
     units: [
       {
@@ -549,7 +549,7 @@ export const additionalCourseCards: SentenceCard[] = [
   originalCard(
     "md-018",
     "We need to confirm the deadline by Thursday.",
-    "我们需要在星期四之前确认截止日期。",
+    "我们需要最晚在星期四确认截止日期。",
     ["follow-up", "deadlines", "confirmation"],
   ),
   originalCard(
@@ -581,6 +581,6 @@ function originalCard(
     tags,
     acceptableAnswers,
     createdAt: SEED_CREATED_AT,
-    updatedAt: SEED_CREATED_AT,
+    updatedAt: id === "md-018" ? "2026-10-22T00:00:00.000Z" : SEED_CREATED_AT,
   };
 }

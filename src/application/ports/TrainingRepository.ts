@@ -11,10 +11,11 @@ import type { VocabularyEntry } from "../../domain/vocabulary/VocabularyEntry";
 import type { SentenceLearningState } from "../../domain/learning/SentenceLearningState";
 import type {
   AppPreferences,
-  UtterLoopFullBackupV2,
+  UtterLoopFullBackupV3,
 } from "../../domain/backup/UtterLoopFullBackup";
 import type { PracticeStatistics } from "../../domain/progress/practiceStatistics";
 import type { PracticeSessionCheckpoint } from "../practice-session/PracticeSessionCheckpoint";
+import type { LocalDataAccess } from "./LocalDataAccess";
 
 export const RECENT_PRACTICE_LOG_LIMIT = 500 as const;
 
@@ -36,7 +37,7 @@ export interface AtomicPracticeWriteResult {
   created: boolean;
 }
 
-export interface TrainingRepository {
+export interface TrainingRepository extends Partial<LocalDataAccess> {
   listCourseCategories(): Promise<CourseCategory[]>;
   saveCourseCategories(categories: CourseCategory[]): Promise<void>;
   listLearningPaths(): Promise<LearningPath[]>;
@@ -62,6 +63,7 @@ export interface TrainingRepository {
   listRecentPracticeActivity(limit?: number): Promise<RecentPracticeActivity>;
   getPracticeStatistics(now: Date, days: number, timeZone?: string): Promise<PracticeStatistics>;
   listAllPracticeLog(): Promise<PracticeLogEntry[]>;
+  listPracticeLogForTurn?(turnId: string): Promise<PracticeLogEntry[]>;
   listVocabularyEntries(): Promise<VocabularyEntry[]>;
   getVocabularyEntry(cardId: SentenceCardId): Promise<VocabularyEntry | undefined>;
   saveVocabularyEntry(entry: VocabularyEntry): Promise<void>;
@@ -72,8 +74,8 @@ export interface TrainingRepository {
   getPracticeSessionCheckpoint(): Promise<PracticeSessionCheckpoint | undefined>;
   savePracticeSessionCheckpoint(checkpoint: PracticeSessionCheckpoint): Promise<void>;
   deletePracticeSessionCheckpoint(): Promise<void>;
-  readFullBackup(exportedAt: string): Promise<UtterLoopFullBackupV2>;
-  replaceAllData(backup: UtterLoopFullBackupV2): Promise<void>;
+  readFullBackup(exportedAt: string): Promise<UtterLoopFullBackupV3>;
+  replaceAllData(backup: UtterLoopFullBackupV3): Promise<void>;
   clearLearningProgress(): Promise<void>;
   clearAll(): Promise<void>;
 }

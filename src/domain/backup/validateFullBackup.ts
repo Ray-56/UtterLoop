@@ -1,3 +1,9 @@
+import {
+  validateSentenceCardRecord, validateSentenceLearningStateRecord, validateReviewStateRecord,
+  record, array, string, text, trimmedText, boolean, boundedNumber, safeInteger,
+  timestamp, stringArray, literal, enumeration, setEnumeration, unique,
+  exactKeys, exactKeysWithOptional, pathError, errorMessage,
+} from "./validateLearningRecords";
 import type { SentenceCard } from "../content/SentenceCard";
 import type { Course, CourseCategory, LearningPath } from "../curriculum/Course";
 import {
@@ -40,8 +46,10 @@ import {
   type FingerGuideMode,
   type QuickStartStatus,
   type ThemePreference,
-  type UtterLoopFullBackupV2,
+  type UtterLoopFullBackupV3,
 } from "./UtterLoopFullBackup";
+import { emptyLearningStudio } from "../studio/LearningStudio";
+import { portableLearningStudio, validatePortableLearningStudio } from "../studio/validateLearningStudio";
 
 const PHASES = new Set<PersistedPracticePhase>([
   "first-exposure",
@@ -70,13 +78,13 @@ const TARGET_BEARING_SUPPORT = new Set<RecallSupportKind>([
 export function validateFullBackup(
   value: unknown,
   legacyMeasurementEpoch = new Date().toISOString(),
-): UtterLoopFullBackupV2 {
+): UtterLoopFullBackupV3 {
   const root = record(value, "$backup");
   exactKeys(root, ["format", "schemaVersion", "exportedAt", "databaseSchemaVersion", "catalog", "learning", "preferences"], "$backup");
   literal(root.format, "utterloop-full-backup", "format");
   const schemaVersion = enumeration(
     root.schemaVersion,
-    [LEGACY_FULL_BACKUP_SCHEMA_VERSION, FULL_BACKUP_SCHEMA_VERSION],
+    [LEGACY_FULL_BACKUP_SCHEMA_VERSION, 2, FULL_BACKUP_SCHEMA_VERSION],
     "schemaVersion",
   );
   timestamp(root.exportedAt, "exportedAt");
@@ -84,7 +92,7 @@ export function validateFullBackup(
     root.databaseSchemaVersion,
     schemaVersion === LEGACY_FULL_BACKUP_SCHEMA_VERSION
       ? LEGACY_FULL_BACKUP_DATABASE_SCHEMA_VERSION
-      : FULL_BACKUP_DATABASE_SCHEMA_VERSION,
+      : schemaVersion === 2 ? 6 : FULL_BACKUP_DATABASE_SCHEMA_VERSION,
     "databaseSchemaVersion",
   );
 
@@ -93,7 +101,7 @@ export function validateFullBackup(
   const categories = array(catalogValue.categories, "catalog.categories").map(validateCategory);
   const learningPaths = array(catalogValue.learningPaths, "catalog.learningPaths").map(validateLearningPath);
   const courses = array(catalogValue.courses, "catalog.courses").map(validateCourse);
-  const cards = array(catalogValue.cards, "catalog.cards").map(validateCard);
+  const cards = array(catalogValue.cards, "catalog.cards").map((card, index) => validateSentenceCardRecord(card, `catalog.cards[${index}]`));
   unique(categories, (item) => item.id, "catalog.categories", "id");
   unique(learningPaths, (item) => item.id, "catalog.learningPaths", "id");
   unique(courses, (item) => item.id, "catalog.courses", "id");
@@ -113,17 +121,18 @@ export function validateFullBackup(
           "vocabularyEntries",
           "measurementEpoch",
           "practiceSessionEvidence",
+          ...(schemaVersion === FULL_BACKUP_SCHEMA_VERSION ? ["studio"] : []),
         ],
     "learning",
   );
   const sentenceLearningStates = array(learningValue.sentenceLearningStates, "learning.sentenceLearningStates")
-    .map(validateSentenceLearningState);
-  const reviewStates = array(learningValue.reviewStates, "learning.reviewStates").map(validateReviewState);
+    .map((state, index) => validateSentenceLearningStateRecord(state, `learning.sentenceLearningStates[${index}]`));
+  const reviewStates = array(learningValue.reviewStates, "learning.reviewStates").map((state, index) => validateReviewStateRecord(state, `learning.reviewStates[${index}]`));
   const practiceLog = array(learningValue.practiceLog, "learning.practiceLog")
     .map((entry, index) => validatePracticeLogEntry(
       entry,
       index,
-      schemaVersion === FULL_BACKUP_SCHEMA_VERSION,
+      schemaVersion !== LEGACY_FULL_BACKUP_SCHEMA_VERSION,
     ));
   const vocabularyEntries = array(learningValue.vocabularyEntries, "learning.vocabularyEntries")
     .map(validateVocabularyEntry);
@@ -131,7 +140,7 @@ export function validateFullBackup(
   unique(reviewStates, (item) => item.cardId, "learning.reviewStates", "cardId");
   unique(practiceLog, (item) => item.id, "learning.practiceLog", "id");
   unique(vocabularyEntries, (item) => item.cardId, "learning.vocabularyEntries", "cardId");
-  const practiceSessionEvidence = schemaVersion === FULL_BACKUP_SCHEMA_VERSION
+  const practiceSessionEvidence = schemaVersion !== LEGACY_FULL_BACKUP_SCHEMA_VERSION
     ? array(
         learningValue.practiceSessionEvidence,
         "learning.practiceSessionEvidence",
@@ -152,11 +161,20 @@ export function validateFullBackup(
   validateLearningReferences(cards, sentenceLearningStates, reviewStates, practiceLog, vocabularyEntries);
   validateGuidedInvariants(sentenceLearningStates, reviewStates, practiceLog);
 
-  const measurementEpoch = schemaVersion === FULL_BACKUP_SCHEMA_VERSION
+  const measurementEpoch = schemaVersion !== LEGACY_FULL_BACKUP_SCHEMA_VERSION
     ? timestamp(learningValue.measurementEpoch, "learning.measurementEpoch")
     : timestamp(legacyMeasurementEpoch, "learning.measurementEpoch");
 
   const preferences = validatePreferences(root.preferences);
+  const studio = schemaVersion === FULL_BACKUP_SCHEMA_VERSION
+    ? validatePortableLearningStudio(learningValue.studio)
+    : portableLearningStudio(emptyLearningStudio());
+  const catalogCardIds = new Set(cards.map((card) => card.id));
+  studio.personalSentences.forEach((sentence, index) => {
+    if (catalogCardIds.has(sentence.id)) {
+      throw pathError(`learning.studio.personalSentences[${index}].id`, "conflicts with a catalog SentenceCard ID");
+    }
+  });
 
   return {
     format: "utterloop-full-backup",
@@ -171,6 +189,7 @@ export function validateFullBackup(
       vocabularyEntries,
       measurementEpoch,
       practiceSessionEvidence,
+      studio,
     },
     preferences,
   };
@@ -261,188 +280,6 @@ function validateCourse(value: unknown, index: number): Course {
   };
 }
 
-function validateCard(value: unknown, index: number): SentenceCard {
-  const path = `catalog.cards[${index}]`;
-  const item = record(value, path);
-  exactKeys(item, ["id", "english", "prompt", "note", "learningSupport", "source", "sourceUrl", "license", "tags", "acceptableAnswers", "createdAt", "updatedAt"], path, true);
-  const card: SentenceCard = {
-    id: text(item.id, `${path}.id`),
-    english: text(item.english, `${path}.english`),
-    prompt: text(item.prompt, `${path}.prompt`),
-    ...(item.note === undefined ? {} : { note: text(item.note, `${path}.note`) }),
-    ...(item.learningSupport === undefined ? {} : { learningSupport: validateLearningSupportShape(item.learningSupport, `${path}.learningSupport`) }),
-    source: text(item.source, `${path}.source`),
-    ...(item.sourceUrl === undefined ? {} : { sourceUrl: text(item.sourceUrl, `${path}.sourceUrl`) }),
-    ...(item.license === undefined ? {} : { license: validateLicense(item.license, `${path}.license`) }),
-    tags: stringArray(item.tags, `${path}.tags`),
-    acceptableAnswers: stringArray(item.acceptableAnswers, `${path}.acceptableAnswers`, true),
-    createdAt: timestamp(item.createdAt, `${path}.createdAt`),
-    updatedAt: timestamp(item.updatedAt, `${path}.updatedAt`),
-  };
-  if (Date.parse(card.createdAt) > Date.parse(card.updatedAt)) {
-    throw pathError(`${path}.updatedAt`, "must not be earlier than createdAt");
-  }
-  validateRestorableLearningSupport(card, path);
-  return card;
-}
-
-function validateLearningSupportShape(value: unknown, path: string): NonNullable<SentenceCard["learningSupport"]> {
-  const support = record(value, path);
-  exactKeys(support, ["context", "communicativeFunction", "pattern", "keywords", "frame", "pronunciation", "grammar"], path);
-  const pronunciation = record(support.pronunciation, `${path}.pronunciation`);
-  exactKeys(pronunciation, ["dialect", "sentenceIpa", "chunks"], `${path}.pronunciation`);
-  const grammar = record(support.grammar, `${path}.grammar`);
-  exactKeys(grammar, ["structure", "explanation", "points", "chunks"], `${path}.grammar`);
-  return {
-    context: text(support.context, `${path}.context`),
-    communicativeFunction: text(support.communicativeFunction, `${path}.communicativeFunction`),
-    pattern: text(support.pattern, `${path}.pattern`),
-    keywords: stringArray(support.keywords, `${path}.keywords`),
-    frame: text(support.frame, `${path}.frame`),
-    pronunciation: {
-      dialect: literal(pronunciation.dialect, "en-US", `${path}.pronunciation.dialect`),
-      sentenceIpa: text(pronunciation.sentenceIpa, `${path}.pronunciation.sentenceIpa`),
-      chunks: array(pronunciation.chunks, `${path}.pronunciation.chunks`).map((value, index) => {
-        const chunkPath = `${path}.pronunciation.chunks[${index}]`;
-        const chunk = record(value, chunkPath);
-        exactKeys(chunk, ["text", "ipa"], chunkPath);
-        return { text: text(chunk.text, `${chunkPath}.text`), ipa: text(chunk.ipa, `${chunkPath}.ipa`) };
-      }),
-    },
-    grammar: {
-      structure: text(grammar.structure, `${path}.grammar.structure`),
-      explanation: text(grammar.explanation, `${path}.grammar.explanation`),
-      points: stringArray(grammar.points, `${path}.grammar.points`),
-      chunks: array(grammar.chunks, `${path}.grammar.chunks`).map((value, index) => {
-        const chunkPath = `${path}.grammar.chunks[${index}]`;
-        const chunk = record(value, chunkPath);
-        exactKeysWithOptional(chunk, ["text", "role", "label"], ["tokens"], chunkPath);
-        const tokens = chunk.tokens === undefined
-          ? undefined
-          : array(chunk.tokens, `${chunkPath}.tokens`).map((value, tokenIndex) => {
-              const tokenPath = `${chunkPath}.tokens[${tokenIndex}]`;
-              const token = record(value, tokenPath);
-              exactKeys(token, ["text", "ipa", "gloss", "partOfSpeech"], tokenPath);
-              return {
-                text: trimmedText(token.text, `${tokenPath}.text`),
-                ipa: trimmedText(token.ipa, `${tokenPath}.ipa`),
-                gloss: trimmedText(token.gloss, `${tokenPath}.gloss`),
-                partOfSpeech: trimmedText(
-                  token.partOfSpeech,
-                  `${tokenPath}.partOfSpeech`,
-                ),
-              };
-            });
-        return {
-          text: text(chunk.text, `${chunkPath}.text`),
-          role: enumeration(chunk.role, ["subject", "predicate", "object", "complement", "adverbial", "modal", "auxiliary", "determiner", "conjunction", "other"], `${chunkPath}.role`),
-          label: text(chunk.label, `${chunkPath}.label`),
-          ...(tokens === undefined ? {} : { tokens }),
-        };
-      }),
-    },
-  };
-}
-
-/**
- * Full Backup is a recovery format, not a content-admission boundary. Keep the
- * learning-support shape and internal reconstruction rules, while deliberately
- * leaving target-bearing Prompt/support detection to runtime quarantine.
- */
-function validateRestorableLearningSupport(card: SentenceCard, cardPath: string): void {
-  const support = card.learningSupport;
-  if (!support) return;
-  const path = `${cardPath}.learningSupport`;
-  if (!support.frame.includes("___")) {
-    throw pathError(`${path}.frame`, "must contain a blank marker (___)");
-  }
-  if (support.keywords.length < 1 || support.keywords.length > 2) {
-    throw pathError(`${path}.keywords`, "must contain one or two items");
-  }
-  const normalizedTarget = normalizeWritten(card.english);
-  const keywordSet = new Set<string>();
-  support.keywords.forEach((keyword, index) => {
-    if (keyword !== keyword.trim()) {
-      throw pathError(`${path}.keywords[${index}]`, "must be trimmed");
-    }
-    const normalized = normalizeWritten(keyword);
-    if (keywordSet.has(normalized)) {
-      throw pathError(`${path}.keywords[${index}]`, "duplicates an earlier keyword");
-    }
-    keywordSet.add(normalized);
-    if (!` ${normalizedTarget} `.includes(` ${normalized} `)) {
-      throw pathError(`${path}.keywords[${index}]`, "must occur in the target");
-    }
-  });
-  assertChunksReconstructTarget(
-    support.pronunciation.chunks.map((chunk) => chunk.text),
-    card,
-    `${path}.pronunciation.chunks`,
-  );
-  assertChunksReconstructTarget(
-    support.grammar.chunks.map((chunk) => chunk.text),
-    card,
-    `${path}.grammar.chunks`,
-  );
-  support.grammar.chunks.forEach((chunk, index) => {
-    if (chunk.tokens === undefined) return;
-    const tokenPath = `${path}.grammar.chunks[${index}].tokens`;
-    if (
-      chunk.tokens.length === 0
-      || normalizeWritten(chunk.tokens.map((token) => token.text).join(" "))
-        !== normalizeWritten(chunk.text)
-    ) {
-      throw pathError(tokenPath, "must reconstruct its grammar chunk in order");
-    }
-  });
-  if (support.grammar.points.length > 2) {
-    throw pathError(`${path}.grammar.points`, "must contain at most two items");
-  }
-  const pointSet = new Set<string>();
-  support.grammar.points.forEach((point, index) => {
-    if (point !== point.trim()) {
-      throw pathError(`${path}.grammar.points[${index}]`, "must be trimmed");
-    }
-    const normalized = point.toLocaleLowerCase();
-    if (pointSet.has(normalized)) {
-      throw pathError(`${path}.grammar.points[${index}]`, "duplicates an earlier point");
-    }
-    pointSet.add(normalized);
-  });
-}
-
-function assertChunksReconstructTarget(
-  chunks: string[],
-  card: SentenceCard,
-  path: string,
-): void {
-  if (chunks.length === 0
-    || normalizeWritten(chunks.join(" ")) !== normalizeWritten(card.english)) {
-    throw pathError(path, "must reconstruct the target sentence in order");
-  }
-}
-
-function normalizeWritten(value: string): string {
-  return value
-    .normalize("NFKC")
-    .toLowerCase()
-    .replace(/[’]/g, "'")
-    .replace(/[.,!?;:"()[\]{}]/g, " ")
-    .replace(/[-/]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function validateLicense(value: unknown, path: string) {
-  const license = record(value, path);
-  exactKeys(license, ["name", "url", "attribution"], path);
-  return {
-    name: text(license.name, `${path}.name`),
-    url: text(license.url, `${path}.url`),
-    attribution: text(license.attribution, `${path}.attribution`),
-  };
-}
-
 function validatePracticeSessionEvidence(
   value: unknown,
   index: number,
@@ -513,10 +350,16 @@ function validateSessionScope(value: unknown, path: string): PracticeSessionEvid
   const item = record(value, path);
   const kind = enumeration(
     item.kind,
-    ["lesson", "review", "vocabulary", "course", "focused"],
+    ["lesson", "review", "vocabulary", "course", "focused", "return"],
     `${path}.kind`,
   );
   switch (kind) {
+    case "return":
+      exactKeys(item, ["kind", "minutes"], path);
+      if (item.minutes !== 3 && item.minutes !== 8 && item.minutes !== 15) {
+        throw new Error(`${path}.minutes must be 3, 8, or 15.`);
+      }
+      return { kind, minutes: item.minutes };
     case "lesson":
       exactKeys(item, ["kind", "courseId", "lessonId", "mode"], path);
       return {
@@ -724,43 +567,6 @@ function assertDisjoint(groups: string[][], path: string): void {
     if (seen.has(value)) throw pathError(path, `contains overlapping occurrence ${value}`);
     seen.add(value);
   });
-}
-
-function validateSentenceLearningState(value: unknown, index: number): SentenceLearningState {
-  const path = `learning.sentenceLearningStates[${index}]`;
-  const item = record(value, path);
-  exactKeys(item, ["cardId", "introducedAt", "acquisitionStatus", "firstPassedAt", "firstPassSource"], path, true);
-  const state: SentenceLearningState = {
-    cardId: text(item.cardId, `${path}.cardId`),
-    ...(item.introducedAt === undefined ? {} : { introducedAt: timestamp(item.introducedAt, `${path}.introducedAt`) }),
-    ...(item.acquisitionStatus === undefined ? {} : { acquisitionStatus: setEnumeration(item.acquisitionStatus, ACQUISITION_STATUSES, `${path}.acquisitionStatus`) }),
-    ...(item.firstPassedAt === undefined ? {} : { firstPassedAt: timestamp(item.firstPassedAt, `${path}.firstPassedAt`) }),
-    ...(item.firstPassSource === undefined ? {} : { firstPassSource: setEnumeration(item.firstPassSource, FIRST_PASS_SOURCES, `${path}.firstPassSource`) }),
-  };
-  try {
-    assertValidSentenceLearningState(state);
-  } catch (error) {
-    throw pathError(path, errorMessage(error));
-  }
-  if (state.introducedAt && state.firstPassedAt && Date.parse(state.introducedAt) > Date.parse(state.firstPassedAt)) {
-    throw pathError(`${path}.firstPassedAt`, "must not be earlier than introducedAt");
-  }
-  return state;
-}
-
-function validateReviewState(value: unknown, index: number): ReviewState {
-  const path = `learning.reviewStates[${index}]`;
-  const item = record(value, path);
-  exactKeys(item, ["cardId", "stage", "dueAt", "lastReviewedAt", "streak", "lapseCount", "learningStatus"], path, true);
-  return {
-    cardId: text(item.cardId, `${path}.cardId`),
-    stage: enumeration(item.stage, [0, 1, 2, 3, 4, 5, 6], `${path}.stage`),
-    dueAt: timestamp(item.dueAt, `${path}.dueAt`),
-    ...(item.lastReviewedAt === undefined ? {} : { lastReviewedAt: timestamp(item.lastReviewedAt, `${path}.lastReviewedAt`) }),
-    streak: safeInteger(item.streak, `${path}.streak`, 0),
-    lapseCount: safeInteger(item.lapseCount, `${path}.lapseCount`, 0),
-    ...(item.learningStatus === undefined ? {} : { learningStatus: setEnumeration(item.learningStatus, LEARNING_STATUSES, `${path}.learningStatus`) }),
-  };
 }
 
 function validatePracticeLogEntry(
@@ -1077,102 +883,4 @@ function supportLevelForKind(kind: RecallSupportKind): RecallSupportLevel {
     case "copy-target": case "answer": return 4;
     case "correction": return 0;
   }
-}
-
-function record(value: unknown, path: string): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) throw pathError(path, "must be an object");
-  return value as Record<string, unknown>;
-}
-function array(value: unknown, path: string): unknown[] {
-  if (!Array.isArray(value)) throw pathError(path, "must be an array");
-  return value;
-}
-function string(value: unknown, path: string): string {
-  if (typeof value !== "string") throw pathError(path, "must be a string");
-  return value;
-}
-function text(value: unknown, path: string): string {
-  const result = string(value, path);
-  if (!result.trim()) throw pathError(path, "must be non-empty text");
-  return result;
-}
-function trimmedText(value: unknown, path: string): string {
-  const result = text(value, path);
-  if (result !== result.trim()) throw pathError(path, "must be trimmed text");
-  return result;
-}
-function boolean(value: unknown, path: string): boolean {
-  if (typeof value !== "boolean") throw pathError(path, "must be a boolean");
-  return value;
-}
-function boundedNumber(value: unknown, path: string, min: number, max: number): number {
-  if (typeof value !== "number" || !Number.isFinite(value) || value < min || value > max) throw pathError(path, `must be a finite number from ${min} to ${max}`);
-  return value;
-}
-function safeInteger(value: unknown, path: string, min: number): number {
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < min) throw pathError(path, `must be a safe integer of at least ${min}`);
-  return value;
-}
-function timestamp(value: unknown, path: string): string {
-  const result = string(value, path);
-  const time = Date.parse(result);
-  if (!Number.isFinite(time)) throw pathError(path, "must be a valid timestamp");
-  try {
-    if (new Date(time).toISOString() !== result) throw pathError(path, "must be a canonical ISO timestamp");
-  } catch {
-    throw pathError(path, "must be a valid timestamp");
-  }
-  return result;
-}
-function stringArray(value: unknown, path: string, allowEmptyText = false): string[] {
-  return array(value, path).map((item, index) => allowEmptyText ? string(item, `${path}[${index}]`) : text(item, `${path}[${index}]`));
-}
-function literal<T extends string | number>(value: unknown, expected: T, path: string): T {
-  if (value !== expected) throw pathError(path, `must equal ${JSON.stringify(expected)}`);
-  return expected;
-}
-function enumeration<const T extends readonly (string | number)[]>(value: unknown, values: T, path: string): T[number] {
-  if (!(values as readonly unknown[]).includes(value)) throw pathError(path, `must be one of ${values.join(", ")}`);
-  return value as T[number];
-}
-function setEnumeration<T extends string>(value: unknown, values: Set<T>, path: string): T {
-  if (typeof value !== "string" || !values.has(value as T)) throw pathError(path, `has an unknown value ${JSON.stringify(value)}`);
-  return value as T;
-}
-function unique<T>(items: T[], getId: (item: T) => string, path: string, field: string): void {
-  const seen = new Map<string, number>();
-  items.forEach((item, index) => {
-    const id = getId(item);
-    const first = seen.get(id);
-    if (first !== undefined) throw pathError(`${path}[${index}].${field}`, `duplicates ${path}[${first}].${field}`);
-    seen.set(id, index);
-  });
-}
-function exactKeys(value: Record<string, unknown>, allowed: string[], path: string, optionalAllowed = false): void {
-  const allowedSet = new Set(allowed);
-  for (const key of Object.keys(value)) {
-    if (!allowedSet.has(key)) throw pathError(`${path}.${key}`, "is not part of the full-backup schema");
-  }
-  if (!optionalAllowed) {
-    for (const key of allowed) {
-      if (!(key in value)) throw pathError(`${path}.${key}`, "is required");
-    }
-  }
-}
-function exactKeysWithOptional(
-  value: Record<string, unknown>,
-  required: string[],
-  optional: string[],
-  path: string,
-): void {
-  exactKeys(value, [...required, ...optional], path, true);
-  for (const key of required) {
-    if (!(key in value)) throw pathError(`${path}.${key}`, "is required");
-  }
-}
-function pathError(path: string, message: string): Error {
-  return new Error(`${path} ${message}`);
-}
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

@@ -34,7 +34,7 @@ describe("QuickStartGuide", () => {
     );
 
     expect(exposureHtml).toContain("Meet the next sentence first");
-    expect(exposureHtml).toContain("Start recall when you&#x27;re ready");
+    expect(exposureHtml).toContain("Type, press Enter, or tap the word track");
     expect(exposureHtml).not.toContain("in your own typing");
     expect(recallHtml).toContain("Recall the next sentence");
     expect(recallHtml).toContain("Prompt and word track");

@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SentenceCard } from "../../domain/content/SentenceCard";
+import type { PracticeLogEntry } from "../../domain/practice/PracticeLogEntry";
 import type { AttemptPreview } from "../../domain/practice/AttemptPreview";
 import type { LearningStatus, ReviewState } from "../../domain/review/ReviewState";
 import { UtterLoopService, type CourseBundle } from "../../application/UtterLoopService";
+import { TrainingSnapshotLoader, type AnalyticsStatus, type TrainingSnapshotLoadState } from "./trainingSnapshotLoader";
+import type { LocalDataAccess } from "../../application/ports/LocalDataAccess";
+import type { LearningStudioStore } from "../../application/ports/LearningStudioStore";
+import { recordStudioCatalogSignal } from "../../application/studio/recordStudioCatalogSignal";
+import type { StudioCheckpoint, StudioExercise } from "../../domain/studio/LearningStudio";
 import type { TrainingSnapshot } from "../../application/use-cases/getTrainingSnapshot";
 import { DexieTrainingRepository } from "../../infrastructure/persistence/dexie/DexieTrainingRepository";
 import type { AttemptEvidence } from "../../domain/practice/PracticeAttempt";
@@ -17,7 +23,6 @@ import type {
   UtterLoopFullBackup,
 } from "../../domain/backup/UtterLoopFullBackup";
 import type { FullBackupSummary } from "../../application/use-cases/restoreFullBackup";
-import { DEFAULT_APP_PREFERENCES } from "../../application/use-cases/getTrainingSnapshot";
 import type { PracticeSessionCheckpoint } from "../practice-session";
 import {
   practiceScopeKey,
@@ -76,8 +81,14 @@ export interface ActivePracticeSessionSummary {
   engagedAt?: string | null;
 }
 
-export interface TrainingController {
+export interface TrainingController extends Partial<LocalDataAccess> {
+  readonly learningStudioStore: LearningStudioStore;
+  getAllPracticeLog(): Promise<PracticeLogEntry[]>;
+  recordStudioCatalogSignal(checkpoint: StudioCheckpoint, exercise: StudioExercise, kind: "revealed" | "skipped"): Promise<unknown>;
   snapshot: TrainingSnapshot | null;
+  analyticsStatus: AnalyticsStatus;
+  analyticsError: string | null;
+  loadAnalytics(options?: { force?: boolean }): Promise<void>;
   status: ControllerStatus;
   error: string | null;
   refresh(): Promise<void>;
@@ -114,6 +125,7 @@ export interface TrainingController {
   clearAll(): Promise<void>;
   updateAppPreferences(patch: Partial<AppPreferences>): Promise<AppPreferences>;
   exportFullBackup(): Promise<UtterLoopFullBackup>;
+  getPracticeTurnEvidence?(turnId: string): Promise<PracticeLogEntry[]>;
   restoreFullBackup(value: unknown): Promise<FullBackupSummary>;
   getPracticeSessionCheckpoint(): Promise<PracticeSessionCheckpoint | undefined>;
   savePracticeSessionCheckpoint(checkpoint: PracticeSessionCheckpoint): Promise<void>;
@@ -137,11 +149,30 @@ export interface TrainingController {
 export function useTrainingController(): TrainingController {
   const repository = useMemo(() => new DexieTrainingRepository(), []);
   const service = useMemo(() => new UtterLoopService(repository), [repository]);
+  const initializeDataAccess = useCallback(() => repository.initializeDataAccess(), [repository]);
+  const acquirePracticeOwnership = useCallback(
+    (options?: { takeOver?: boolean }) => repository.acquirePracticeOwnership(options),
+    [repository],
+  );
+  const renewPracticeOwnership = useCallback(
+    (token: string) => repository.renewPracticeOwnership(token), [repository],
+  );
+  const releasePracticeOwnership = useCallback(
+    (token: string) => repository.releasePracticeOwnership(token), [repository],
+  );
+  const getAllPracticeLog = useCallback(() => repository.listAllPracticeLog(), [repository]);
   const practiceSessionLifecycle = useMemo(() => new PracticeSessionLifecycle(repository, {
     now: () => new Date(),
     createId: (kind) => createLocalId(kind),
   }), [repository]);
-  const [snapshot, setSnapshot] = useState<TrainingSnapshot | null>(null);
+  const [snapshotState, setSnapshotState] = useState<TrainingSnapshotLoadState>({
+    snapshot: null, analyticsStatus: "deferred", analyticsError: null,
+  });
+  const { snapshot, analyticsStatus, analyticsError } = snapshotState;
+  const snapshotLoader = useMemo(
+    () => new TrainingSnapshotLoader(service, setSnapshotState),
+    [service],
+  );
   const [status, setStatus] = useState<ControllerStatus>("loading");
   const [error, setError] = useState<string | null>(null);
   const [persistenceHealth, setPersistenceHealth] = useState<PersistenceHealth>("saved");
@@ -150,10 +181,10 @@ export function useTrainingController(): TrainingController {
     [],
   );
 
-  const refresh = useCallback(async () => {
-    const nextSnapshot = await service.getSnapshot();
-    setSnapshot(nextSnapshot);
-  }, [service]);
+  const refresh = useCallback(() => snapshotLoader.refresh(), [snapshotLoader]);
+  const loadAnalytics = useCallback(
+    (options?: { force?: boolean }) => snapshotLoader.loadAnalytics(options), [snapshotLoader],
+  );
 
   useEffect(() => {
     let isMounted = true;
@@ -161,12 +192,12 @@ export function useTrainingController(): TrainingController {
     async function load() {
       try {
         setStatus("loading");
+        await repository.initializeDataAccess();
         await migrateBrowserPreferences(repository);
         await service.ensureDefaultCatalog();
-        const nextSnapshot = await service.getSnapshot();
+        await snapshotLoader.refresh();
 
         if (isMounted) {
-          setSnapshot(nextSnapshot);
           setStatus("ready");
           setError(null);
         }
@@ -182,23 +213,24 @@ export function useTrainingController(): TrainingController {
 
     return () => {
       isMounted = false;
+      snapshotLoader.cancel();
     };
-  }, [repository, service]);
+  }, [repository, service, snapshotLoader]);
 
   const retryStartup = useCallback(async () => {
     setStatus("loading");
     setError(null);
     try {
+      await repository.initializeDataAccess();
       await migrateBrowserPreferences(repository);
       await service.ensureDefaultCatalog();
-      const nextSnapshot = await service.getSnapshot();
-      setSnapshot(nextSnapshot);
+      await snapshotLoader.refresh({ invalidateFocused: true });
       setStatus("ready");
     } catch (caught) {
       setStatus("error");
       setError(caught instanceof Error ? caught.message : "Unable to load UtterLoop data.");
     }
-  }, [repository, service]);
+  }, [repository, service, snapshotLoader]);
 
   const submitAttempt = useCallback(
     async (
@@ -241,6 +273,18 @@ export function useTrainingController(): TrainingController {
     },
     [refresh, runPersistenceCommand, service],
   );
+
+  const recordCatalogSignal = useCallback(async (checkpoint: StudioCheckpoint, exercise: StudioExercise,
+    kind: "revealed" | "skipped",
+  ) => {
+    const sourceCardId = exercise.sourceCardId;
+    if (!sourceCardId) throw new Error("This Studio expression has no catalog sentence.");
+    return runPersistenceCommand(`studio-signal:${checkpoint.sessionId}:${exercise.id}:${kind}`, async () => {
+      const result = await recordStudioCatalogSignal(repository, checkpoint, exercise.id, sourceCardId, kind, new Date());
+      await refresh();
+      return result;
+    });
+  }, [refresh, repository, runPersistenceCommand]);
 
   const setVocabularyStatus = useCallback(
     async (cardId: string, isSaved: boolean) => {
@@ -304,7 +348,7 @@ export function useTrainingController(): TrainingController {
     async (bundle: CourseBundle) => {
       await runPersistenceCommand("course-catalog", async () => {
         await service.importCourseBundle(bundle);
-        await refresh();
+        await snapshotLoader.refresh({ invalidateFocused: true });
       });
     },
     [refresh, runPersistenceCommand, service],
@@ -313,23 +357,21 @@ export function useTrainingController(): TrainingController {
   const restoreDefaultCourses = useCallback(async () => {
     await runPersistenceCommand("course-catalog", async () => {
       await service.restoreDefaultCourses();
-      await refresh();
+      await snapshotLoader.refresh({ invalidateFocused: true });
     });
   }, [refresh, runPersistenceCommand, service]);
 
   const resetLearningProgress = useCallback(async () => {
     await runPersistenceCommand("learning-progress", async () => {
       await service.clearLearningProgress();
-      await refresh();
+      await snapshotLoader.refresh({ invalidateFocused: true });
     });
   }, [refresh, runPersistenceCommand, service]);
 
   const clearAll = useCallback(async () => {
     await runPersistenceCommand("all-local-data", async () => {
       await service.clearAll();
-      await service.updateAppPreferences({ ...DEFAULT_APP_PREFERENCES });
-      await service.ensureDefaultCatalog();
-      await refresh();
+      await snapshotLoader.refresh({ invalidateFocused: true });
     });
   }, [refresh, runPersistenceCommand, service]);
 
@@ -345,14 +387,23 @@ export function useTrainingController(): TrainingController {
   const restoreBackup = useCallback(async (value: unknown) => {
     return runPersistenceCommand("full-backup", async () => {
       const summary = await service.restoreFullBackup(value);
-      await service.ensureDefaultCatalog();
-      await refresh();
+      await snapshotLoader.refresh({ invalidateFocused: true });
       return summary;
     });
   }, [refresh, runPersistenceCommand, service]);
 
   return {
+    learningStudioStore: repository,
+    getAllPracticeLog,
+    recordStudioCatalogSignal: recordCatalogSignal,
     snapshot,
+    analyticsStatus,
+    analyticsError,
+    loadAnalytics,
+    initializeDataAccess,
+    acquirePracticeOwnership,
+    renewPracticeOwnership,
+    releasePracticeOwnership,
     status: status === "ready" && persistenceHealth === "attention" ? "write-error" : status,
     error,
     refresh,
@@ -373,6 +424,7 @@ export function useTrainingController(): TrainingController {
     clearAll,
     updateAppPreferences: updatePreferences,
     exportFullBackup: () => service.exportFullBackup(),
+    getPracticeTurnEvidence: (turnId) => repository.listPracticeLogForTurn(turnId),
     restoreFullBackup: restoreBackup,
     getPracticeSessionCheckpoint: () => service.getPracticeSessionCheckpoint(),
     savePracticeSessionCheckpoint: (checkpoint) => runPersistenceCommand(

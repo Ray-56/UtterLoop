@@ -12,6 +12,24 @@ const AS_OF = new Date("2026-08-01T12:00:00.000Z");
 const TIME_ZONE = "Asia/Shanghai";
 
 describe("BetaReadiness.measure", () => {
+  it("counts scheduled Review inside a mixed Return plan without treating weak or new work as retention", () => {
+    const evidence = session("return-round", "2026-07-30T00:00:00.000Z", { kind: "completed", reason: "scope-complete" }, "standard", {
+      initialOccurrenceIds: ["due", "weak", "new"], scheduledOccurrenceIds: ["due", "weak", "new"],
+      attemptedOccurrenceIds: ["due", "weak", "new"], completedOccurrenceIds: ["due", "weak", "new"],
+      dueReviewScheduledOccurrenceIds: ["due"], dueReviewCompletedOccurrenceIds: ["due"], introducedCardIds: ["new"],
+    });
+    evidence.scope = { kind: "return", minutes: 8 };
+    const result = BetaReadiness.measure(emptyInput({
+      cards: [card("due"), card("weak"), card("new")], sessionEvidence: [evidence],
+      practiceLog: [
+        attempt("return-due", "due", { submittedAt: "2026-07-30T00:05:00.000Z", context: dueContext("return-round", "due", "2026-07-29T00:00:00.000Z") }),
+        attempt("return-weak", "weak", { submittedAt: "2026-07-30T00:06:00.000Z", phase: "voluntary-practice", context: { sessionId: "return-round", roundId: "round-return-round", occurrenceId: "weak", queueReason: "voluntary-practice" } }),
+        attempt("return-new", "new", { submittedAt: "2026-07-30T00:07:00.000Z", phase: "guided-recall", context: learningContext("return-round", "new") }),
+      ],
+    }));
+    expect(result.retention.dueReviewCompletion).toMatchObject({ numerator: 1, denominator: 1 });
+    expect(result.retention.weeklyRetainedIndependentSentences.numerator).toBe(1);
+  });
   it("counts distinct strictly retained cards and reports context-free history as excluded coverage", () => {
     const result = BetaReadiness.measure({
       asOf: AS_OF,

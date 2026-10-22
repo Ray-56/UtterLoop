@@ -22,7 +22,7 @@ export interface ResolvePracticeTurnForScopeInput {
 export function resolvePracticeTurnForScope(
   input: ResolvePracticeTurnForScopeInput,
 ): PracticeTurn {
-  if (input.initialPhase) {
+  if (input.initialPhase && !(input.initialPhase === "first-exposure" && input.learningState?.introducedAt)) {
     return createPracticeTurn(input.id, input.card.id, input.initialPhase);
   }
 

@@ -6,6 +6,7 @@ const PRACTICE_KINDS = new Set<PracticeScope["kind"]>([
   "vocabulary",
   "course",
   "focused",
+  "return",
 ]);
 
 export function parsePracticeScopeUrl(search: string): PracticeScope | null {
@@ -20,6 +21,12 @@ export function parsePracticeScopeUrl(search: string): PracticeScope | null {
   }
 
   const courseId = textOrNull(parameters.get("practiceCourse"));
+
+  if (kind === "return") {
+    const minutes = parameters.get("minutes");
+    return minutes === "3" || minutes === "8" || minutes === "15"
+      ? { kind, minutes: Number(minutes) as 3 | 8 | 15 } : null;
+  }
 
   if (kind === "lesson") {
     const lessonId = textOrNull(parameters.get("practiceLesson"));
@@ -50,7 +57,9 @@ export function buildPracticeScopeUrl(scope: PracticeScope): string {
   parameters.set("view", "practice");
   parameters.set("practice", scope.kind);
 
-  if (scope.kind === "lesson") {
+  if (scope.kind === "return") {
+    parameters.set("minutes", String(scope.minutes));
+  } else if (scope.kind === "lesson") {
     parameters.set("practiceCourse", scope.courseId);
     parameters.set("practiceLesson", scope.lessonId);
     parameters.set("practiceMode", scope.mode);
@@ -72,6 +81,7 @@ export function removePracticeScopeFromUrl(search: string): string {
   parameters.delete("practiceLesson");
   parameters.delete("practiceMode");
   parameters.delete("practiceCard");
+  parameters.delete("minutes");
   return `?${parameters.toString()}`;
 }
 

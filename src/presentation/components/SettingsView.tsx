@@ -24,6 +24,7 @@ import type {
 import { ConfirmationDialog } from "./ConfirmationDialog";
 import { FullBackupControls } from "./FullBackupControls";
 import { validateFullBackup } from "../../domain/backup/validateFullBackup";
+import { resolvePreferredSpeechVoice, speechVoiceSelectionValue } from "../preferences/personalizationPreferences";
 
 interface SettingsViewProps {
   controller: TrainingController;
@@ -108,11 +109,10 @@ export function PersonalizationSettings({
   speechPreviewStatus,
   speechVoices,
 }: PersonalizationSettingsProps) {
-  const isSavedVoiceUnavailable = Boolean(
-    preferences.speechVoiceUri
-    && !speechVoices.some((voice) => voice.voiceURI === preferences.speechVoiceUri),
-  );
-  const selectedSpeechVoiceUri = preferences.speechVoiceUri ?? "";
+  const selectedVoice = resolvePreferredSpeechVoice(speechVoices, preferences.speechVoiceUri);
+  const isSavedVoiceUnavailable = Boolean(preferences.speechVoiceUri && !selectedVoice);
+  const selectedSpeechVoiceUri = selectedVoice
+    ? speechVoiceSelectionValue(selectedVoice) : preferences.speechVoiceUri ?? "";
 
   return (
     <section
@@ -189,7 +189,7 @@ export function PersonalizationSettings({
                 </option>
               )}
               {speechVoices.map((voice) => (
-                <option key={voice.voiceURI} value={voice.voiceURI}>
+                <option key={speechVoiceSelectionValue(voice)} value={speechVoiceSelectionValue(voice)}>
                   {voice.name} · {voice.lang}
                 </option>
               ))}
@@ -353,6 +353,7 @@ export function SettingsView({ controller, personalization }: SettingsViewProps)
   const [backupExportError, setBackupExportError] = useState<string | null>(null);
   const [backupMessage, setBackupMessage] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<DestructiveSettingsAction | null>(null);
+  const [needsReload, setNeedsReload] = useState(false);
   const pendingActionRef = useRef<SettingsAction | null>(null);
   const snapshot = controller.snapshot;
 
@@ -467,6 +468,7 @@ export function SettingsView({ controller, personalization }: SettingsViewProps)
       );
       if (didReset) {
         setConfirmation(null);
+        setNeedsReload(true);
       }
       return;
     }
@@ -475,10 +477,11 @@ export function SettingsView({ controller, personalization }: SettingsViewProps)
       const didClear = await runAction(
         "clear",
         controller.clearAll,
-        "This device was cleared and default courses were reinstalled.",
+        "This device was cleared. Reload to install default courses.",
       );
       if (didClear) {
         setConfirmation(null);
+        setNeedsReload(true);
       }
     }
   }
@@ -493,6 +496,15 @@ export function SettingsView({ controller, personalization }: SettingsViewProps)
     const reader = new FileReader();
     reader.onload = () => setImportText(String(reader.result ?? ""));
     reader.readAsText(file);
+  }
+
+  if (needsReload) {
+    return <section className="center-panel" aria-live="polite">
+      <h3>Local learning data updated</h3>
+      <p>{backupMessage ?? message}</p>
+      <p>Reload to continue with the updated data.</p>
+      <button className="primary-button" onClick={() => window.location.reload()} type="button">Reload updated data</button>
+    </section>;
   }
 
   return (
@@ -564,6 +576,7 @@ export function SettingsView({ controller, personalization }: SettingsViewProps)
             setBackupMessage(
               `Restored ${summary.counts.courses} courses, ${summary.counts.cards} cards, and ${summary.counts.practiceLogEntries} learning events.`,
             );
+            setNeedsReload(true);
           }}
           validate={validateFullBackup}
         />

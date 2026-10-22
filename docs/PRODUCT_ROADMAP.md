@@ -1,6 +1,6 @@
 # UtterLoop Product Roadmap
 
-Date: 2026-08-01
+Date: 2026-10-23
 Status: Active
 Horizon: 12–18 months
 Review cadence: Monthly for active Now evidence; quarterly for the full Roadmap
@@ -29,7 +29,7 @@ Roadmap status has the following meaning:
 
 UtterLoop is currently a local-first, keyboard-first English sentence trainer. It teaches a Target Sentence, moves the learner from Guided Recall to Independent Recall, provides word-level feedback, and returns the sentence through spaced Review. On supported desktop keyboards, the non-predictive Finger Guide shows the recommended finger for keys the learner has already pressed.
 
-The current product does not yet claim to measure or improve real finger use, typing speed, or typing fluency. Those are hypotheses for the Touch Typing phase.
+The optional Fluency Pass now measures visible-target typing speed, accuracy, editing and pauses separately from language recall. Physical-key aggregates do not establish real finger use. Improved typing fluency and transfer remain hypotheses for the Touch Typing phase.
 
 “Active output” in the current product means independently producing a Target Sentence in typed form. It is not evidence of spontaneous conversation, pronunciation quality, or spoken fluency. Likewise, “high-frequency” remains a content-strategy aspiration until UtterLoop documents a corpus or other frequency-based selection method; external copy should prefer “practical, high-reuse sentences” when that evidence is absent.
 
@@ -47,7 +47,7 @@ The initial audience is Chinese-speaking English learners who understand more En
 
 `understand the target -> guided recall -> independent recall -> word-level feedback -> spaced review`
 
-The future typing extension follows the language result rather than competing with recall:
+The optional typing extension follows the language result:
 
 `independent recall -> language feedback/correction -> optional Fluency Pass -> typing feedback`
 
@@ -133,6 +133,16 @@ UtterLoop is no longer only a sentence-recall test. It can introduce an unseen s
 ### Current Typing Boundary
 
 The Finger Guide reflects an accepted physical key after the learner presses it and demonstrates a recommended standard finger assignment. It neither predicts the next answer character nor detects the learner's actual finger. It currently stores no typing history and calculates no finger accuracy, WPM, rhythm, or weak-key schedule.
+
+## Authorized Learning Expansion — 2026-10-22
+
+Status: **Implemented with engineering verification; learning-effect hypotheses unvalidated**
+
+The user explicitly requested delivery of content quality, long-history performance, multi-tab safety, optional Fluency Pass, multi-context recall, Sentence Families, Rehearsal Tasks, a Personal Sentence inbox, Return Plans and observed-pattern contrast practice. This is an explicit scope decision to make the candidate experiences available for controlled use; it is not evidence that Now-B or the Touch Typing learning gates have passed.
+
+The [Learning Expansion specification](./superpowers/specs/2026-10-22-learning-expansion-design.md) defines the full delivery and verification scope. New activities are optional and preserve the default Course learning loop. Transfer, personal and typing results remain separate from strict retained Course recall. Return Plans preserve the ordinary meaning of due Review occurrences. Content expansion initially adds complete authored support to the 20 Work & Study sentences, for 40 supported default cards in total.
+
+Real-user research remains active Now work. Cross-prompt retrieval, new-variant performance, real-task usefulness and typing transfer must be evaluated as distinct hypotheses. Engineering tests can establish persistence, timing, evaluation and interaction correctness; they do not establish spontaneous conversation ability or sustained learning gains.
 
 ## Now — Validate English Learning
 
@@ -442,6 +452,17 @@ These exclusions may be reconsidered only through an explicit Roadmap decision. 
 - [Beta Readiness Browser Acceptance](./testing/2026-08-01-beta-readiness-browser-acceptance.md)
 
 ## Change Log
+
+### 2026-10-23
+
+- Delivered the ten authorized expansion items with separate transfer, personal and typing evidence; recorded [engineering acceptance](./testing/2026-10-23-learning-expansion-acceptance.md).
+- Verified authored teaching/test separation, local recovery/backup, single-writer protection and measured long-history behavior. Human Now-B, delayed recall and typing-transfer gates remain open.
+
+### 2026-10-22
+
+- Recorded the user's explicit request to implement the proposed learning extensions and complete engineering verification while retaining the original human-validation gates.
+- Added the Learning Expansion specification and separate-evidence architecture decision. Optional experiments do not change the strict Course retention definition.
+- Kept Double Pinyin and a generalized multi-track platform uncommitted; neither was part of the authorized implementation scope.
 
 ### 2026-08-01
 

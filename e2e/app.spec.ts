@@ -15,7 +15,7 @@ async function enterStandardStarterRecall(page: Page): Promise<void> {
   await expect(page.getByLabel("Quick Start, step 1 of 6")).toBeVisible();
   await page.getByRole("button", { name: "Skip Quick Start" }).click();
   await expect(page.getByLabel(/Quick Start, step/)).toHaveCount(0);
-  await page.getByRole("button", { name: "Start recall" }).click();
+  await page.getByLabel("Type the target sentence").press("Enter");
   await expect(page.getByLabel("First exposure")).toHaveCount(0);
 }
 
@@ -154,7 +154,7 @@ for (const viewport of PRACTICE_FIT_VIEWPORTS) {
   });
 }
 
-test("keeps First Exposure as one grammar row plus its required start action", async ({ page }) => {
+test("keeps First Exposure to one grammar row and starts recall from the word track", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 720 });
   await openReadyApp(page, STARTER_LESSON_URL);
   await page.getByRole("button", { name: "Skip Quick Start" }).click();
@@ -169,13 +169,17 @@ test("keeps First Exposure as one grammar row plus its required start action", a
   await expect(panel.locator(".learning-support-target-form")).toHaveCount(0);
   await expect(page.getByRole("list", { name: "Sentence structure map" })).toBeVisible();
   await expect(page.locator(".sentence-grammar-map").getByText("你好", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Start recall" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Start recall" })).toHaveCount(0);
+  await expect(page.getByLabel("Type the target sentence")).toBeEditable();
   await expect(page.getByLabel("Practice shortcuts")).toBeVisible();
   await expectNoHorizontalPageOverflow(page, "First Exposure grammar map");
   expect(await page.evaluate(() => Math.max(
     document.documentElement.scrollHeight,
     document.body.scrollHeight,
   ) - window.innerHeight)).toBeLessThanOrEqual(1);
+
+  await page.getByLabel("Sentence word track").click();
+  await expect(page.getByLabel("First exposure")).toHaveCount(0);
 });
 
 for (const scope of PRACTICE_SCOPE_DEEP_LINKS) {
@@ -503,7 +507,7 @@ test("a Progress weak card opens Focused voluntary practice without changing Rev
   await expect(page).toHaveURL(/view=practice.*scope=focused.*practiceCard=sf-001/);
   const board = page.getByLabel("Sentence recall practice");
   await expect(board.getByText("Focused Practice", { exact: true })).toBeVisible();
-  await expect(board.getByText("Voluntary practice", { exact: true }).first()).toBeVisible();
+  await expect(board.getByText(/Stage 3 · Voluntary practice/)).toBeVisible();
 
   const capture = page.getByLabel("Type the target sentence");
   await capture.fill("Hello, my name is Emma.");
@@ -609,31 +613,35 @@ test("switches between explicit light and dark themes", async ({ page }) => {
   await expect(page.getByRole("radio", { name: /Dark/ })).toBeChecked();
 });
 
-for (const theme of ["light", "dark"] as const) {
-  test(`${theme} theme has no horizontal overflow across supported viewports`, async ({ page }) => {
-    await page.setViewportSize({ width: 1440, height: 1000 });
-    await openReadyApp(page, "/?view=settings");
+test.describe("production responsive layout", () => {
+  test.use({ baseURL: "http://127.0.0.1:4175" });
 
-    const themeRadio = page.getByRole("radio", {
-      name: theme === "light" ? /Light/ : /Dark/,
-    });
-    await themeRadio.check();
-    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
-    await expect(themeRadio).toBeEnabled();
+  for (const theme of ["light", "dark"] as const) {
+    test(`${theme} theme has no horizontal overflow across supported viewports`, async ({ page }) => {
+      await page.setViewportSize({ width: 1440, height: 1000 });
+      await openReadyApp(page, "/?view=settings");
 
-    for (const viewport of RESPONSIVE_VIEWPORTS) {
-      await page.setViewportSize(viewport);
-      for (const route of RESPONSIVE_ROUTES) {
-        await openReadyApp(page, route);
-        await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
-        await expectNoHorizontalPageOverflow(
-          page,
-          `${theme} ${viewport.width}px ${route}`,
-        );
+      const themeRadio = page.getByRole("radio", {
+        name: theme === "light" ? /Light/ : /Dark/,
+      });
+      await themeRadio.check();
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      await expect(themeRadio).toBeEnabled();
+
+      for (const viewport of RESPONSIVE_VIEWPORTS) {
+        await page.setViewportSize(viewport);
+        for (const route of RESPONSIVE_ROUTES) {
+          await openReadyApp(page, route);
+          await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+          await expectNoHorizontalPageOverflow(
+            page,
+            `${theme} ${viewport.width}px ${route}`,
+          );
+        }
       }
-    }
-  });
-}
+    });
+  }
+});
 
 test("Reset learning progress can be cancelled and restores focus to its opener", async ({ page }) => {
   await openReadyApp(page, "/?view=settings");
@@ -780,7 +788,11 @@ test("Quick Start restores its step, sentence, and draft, then wins root routing
 
   await expect(page.getByLabel("Quick Start, step 1 of 6")).toBeVisible();
   await expect(page.getByLabel("First exposure")).toBeVisible();
-  await page.getByRole("button", { name: "Start recall" }).click();
+  await page.getByLabel("Type the target sentence").press("Enter");
+  // First exposure commits asynchronously. The next step appears only after its
+  // lifecycle transaction finishes; reload the completed transition, not an
+  // in-flight key handler.
+  await expect(page.getByLabel("Quick Start, step 2 of 6")).toBeVisible();
 
   await page.reload();
   await expectAppReady(page);
@@ -911,7 +923,7 @@ test("a stale active checkpoint cannot outrank due Review on the bare root", asy
   await expect(page).not.toHaveURL(/scope=lesson/);
   const board = page.getByLabel("Sentence recall practice");
   await expect(board.getByText("Review", { exact: true })).toBeVisible();
-  await expect(board.getByText("Review recall", { exact: true }).first()).toBeVisible();
+  await expect(board.getByText(/Stage 1 · Review recall/)).toBeVisible();
   await expect.poll(async () => (
     await readUtterLoopIndexedDbRecord(page, "practiceSessionCheckpoints", "active")
   )?.scope).toEqual({ kind: "review" });
@@ -949,7 +961,7 @@ test("root Practice defaults to due Review after Quick Start is dismissed", asyn
   await expect(page.getByLabel(/Quick Start, step/)).toHaveCount(0);
   const board = page.getByLabel("Sentence recall practice");
   await expect(board.getByText("Review", { exact: true })).toBeVisible();
-  await expect(board.getByText("Review recall", { exact: true }).first()).toBeVisible();
+  await expect(board.getByText(/Stage 1 · Review recall/)).toBeVisible();
   await expect(page.getByText("你好，我叫艾玛。", { exact: true })).toBeVisible();
 });
 
@@ -982,4 +994,35 @@ test("Start over asks before discarding a Practice draft", async ({ page }) => {
     "Practice restarted from the first sentence.",
     { exact: true },
   )).toBeVisible();
+});
+
+test("deferred Progress read failure offers retry and force refresh reads new history", async ({ page }) => {
+  await openReadyApp(page, "/?view=settings");
+  await page.evaluate(() => {
+    const nativeGetAll = IDBIndex.prototype.getAll;
+    IDBIndex.prototype.getAll = function (...parameters: Parameters<typeof nativeGetAll>) {
+      if (this.objectStore.name === "practiceLog") {
+        IDBIndex.prototype.getAll = nativeGetAll;
+        throw new DOMException("Injected local history read failure", "UnknownError");
+      }
+      return nativeGetAll.apply(this, parameters);
+    };
+  });
+  await page.getByRole("button", { name: "Progress", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Learning evidence could not be loaded", exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Recall outcomes", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Retry learning evidence", exact: true }).click();
+  const outcomes = page.getByRole("region", { name: "Recall outcomes", exact: true });
+  await expect(outcomes).toBeVisible();
+  await expect(outcomes.getByText("Retrieval checks", { exact: true }).locator("..")).toContainText("0");
+  await seedUtterLoopIndexedDb(page, { practiceLog: [{
+    kind: "attempt", id: "analytics-refresh-attempt", turnId: "analytics-refresh-turn", cardId: "sf-001",
+    phase: "independent-recall", submissionIndex: 0, submittedAt: new Date().toISOString(),
+    answer: "Hello, my name is Emma.", outcome: "perfect", accuracy: 1,
+    answerWasRevealed: false, hadEdits: false, audioPlayCount: 0, durationMs: 1000,
+    supportLevelUsed: 0, supportKindsUsed: [], receivedCorrection: false,
+  }] });
+  await page.getByRole("button", { name: "Refresh learning evidence", exact: true }).click();
+  await expect(outcomes.getByText("Retrieval checks", { exact: true }).locator("..")).toContainText("1");
+  await expect(outcomes.getByText("Perfect recalls", { exact: true }).locator("..")).toContainText("1");
 });

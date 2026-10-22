@@ -5,13 +5,15 @@ import {
 } from "../domain/curriculum/queryCourseCatalog";
 
 export type AppView = "practice" | "courses" | "review" | "progress" | "settings";
+export type StudioView = "home" | "context" | "family" | "mission" | "personal" | "weakness" | "fluency";
 
 export type UrlPracticeScope =
   | { kind: "lesson"; courseId: string; lessonId: string; mode: "learn" | "replay" }
   | { kind: "review"; courseId?: string }
   | { kind: "vocabulary"; cardId?: string; courseId?: string }
   | { kind: "course"; courseId: string }
-  | { kind: "focused"; cardId: string };
+  | { kind: "focused"; cardId: string }
+  | { kind: "return"; minutes: 3 | 8 | 15 };
 
 export interface AppUrlState {
   view: AppView;
@@ -23,6 +25,7 @@ export interface AppUrlState {
   reviewCourseId: string | null;
   practiceScope: UrlPracticeScope | null;
   practiceScopeWasInvalid: boolean;
+  studio?: StudioView;
 }
 
 export const DEFAULT_COURSE_RESULT_LIMIT = 24;
@@ -47,6 +50,7 @@ const PROGRESS_STATUSES = new Set<NonNullable<CourseCatalogQuery["status"]>>([
   "completed",
 ]);
 const SORTS = new Set<CourseCatalogQuery["sort"]>(["recommended", "title", "progress"]);
+const STUDIO_VIEWS = new Set<StudioView>(["home", "context", "family", "mission", "personal", "weakness", "fluency"]);
 
 export function parseAppUrlState(search: string): AppUrlState {
   const parameters = new URLSearchParams(search);
@@ -59,6 +63,7 @@ export function parseAppUrlState(search: string): AppUrlState {
   const practiceScope = view === "practice" ? parsePracticeScope(parameters) : null;
   const hasRequestedPracticeScope = view === "practice"
     && textOrNull(parameters.get("scope")) !== null;
+  const studio = view === "practice" ? oneOf(parameters.get("studio"), STUDIO_VIEWS) : null;
 
   return {
     view,
@@ -76,12 +81,14 @@ export function parseAppUrlState(search: string): AppUrlState {
     reviewCourseId: view === "review" ? textOrNull(parameters.get("reviewCourse")) : null,
     practiceScope,
     practiceScopeWasInvalid: hasRequestedPracticeScope && practiceScope === null,
+    ...(studio ? { studio } : {}),
   };
 }
 
 export function buildAppUrlState(state: AppUrlState): string {
   const parameters = new URLSearchParams();
   parameters.set("view", state.view);
+  if (state.view === "practice" && state.studio && STUDIO_VIEWS.has(state.studio)) parameters.set("studio", state.studio);
 
   if (state.view === "practice" && state.practiceScope) {
     serializePracticeScope(parameters, state.practiceScope);
@@ -114,6 +121,12 @@ function parsePracticeScope(parameters: URLSearchParams): UrlPracticeScope | nul
   const kind = parameters.get("scope");
   const courseId = textOrNull(parameters.get("practiceCourse"));
   const cardId = textOrNull(parameters.get("practiceCard"));
+
+  if (kind === "return") {
+    const minutes = parameters.get("minutes");
+    return minutes === "3" || minutes === "8" || minutes === "15"
+      ? { kind, minutes: Number(minutes) as 3 | 8 | 15 } : null;
+  }
 
   if (kind === "lesson") {
     const lessonId = textOrNull(parameters.get("practiceLesson"));
@@ -148,6 +161,11 @@ function parsePracticeScope(parameters: URLSearchParams): UrlPracticeScope | nul
 
 function serializePracticeScope(parameters: URLSearchParams, scope: UrlPracticeScope): void {
   parameters.set("scope", scope.kind);
+
+  if (scope.kind === "return") {
+    parameters.set("minutes", String(scope.minutes));
+    return;
+  }
 
   if (scope.kind === "lesson") {
     parameters.set("practiceCourse", scope.courseId);

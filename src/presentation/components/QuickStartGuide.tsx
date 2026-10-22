@@ -40,11 +40,11 @@ const stepCopy: Record<QuickStartStep, { title: string; description: string }> =
 const firstExposureCopy: Partial<Record<QuickStartStep, { title: string; description: string }>> = {
   3: {
     title: "Meet the next sentence first",
-    description: "Read the complete sentence first. Start recall when you're ready; the written support will close.",
+    description: "Read the complete sentence first. Type, press Enter, or tap the word track when you're ready; the written support will close.",
   },
   4: {
     title: "Meet the next sentence first",
-    description: "Read the complete sentence first. Start recall when you're ready to rebuild it from the Prompt.",
+    description: "Read the complete sentence first. Type, press Enter, or tap the word track when you're ready to rebuild it from the Prompt.",
   },
 };
 

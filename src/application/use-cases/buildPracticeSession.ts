@@ -1,6 +1,6 @@
 import type { SentenceCard } from "../../domain/content/SentenceCard";
 import { inspectSentenceCardRecallSafety } from "../../domain/content/inspectSentenceCardRecallSafety";
-import type { Course } from "../../domain/curriculum/Course";
+import type { Course, LearningPath } from "../../domain/curriculum/Course";
 import { buildLessonPracticeQueue } from "../../domain/curriculum/buildLessonPracticeQueue";
 import { deriveCourseProgress } from "../../domain/curriculum/deriveCourseProgress";
 import type { ReviewState } from "../../domain/review/ReviewState";
@@ -15,6 +15,7 @@ import type {
   RecallSupportLevel,
 } from "../../domain/practice/PracticeTurn";
 import type { PracticeQueueReason } from "../../domain/practice/PracticeSessionEvidence";
+import { buildReturnPlan, type ReturnPlan, type ReturnPlanMinutes } from "../../domain/studio/returnPlan";
 import {
   buildCourseReplayQueue,
   type CourseReplayEmptyReason,
@@ -25,7 +26,8 @@ export type PracticeScope =
   | { kind: "review"; courseId?: string }
   | { kind: "vocabulary"; cardId?: string; courseId?: string }
   | { kind: "course"; courseId: string }
-  | { kind: "focused"; cardId: string };
+  | { kind: "focused"; cardId: string }
+  | { kind: "return"; minutes: ReturnPlanMinutes };
 
 export interface PracticeOccurrenceContext {
   courseId: string;
@@ -38,6 +40,7 @@ export interface PracticeOccurrenceContext {
 }
 
 export interface PracticeSessionItem extends PracticeQueueItem {
+  explanation?: string;
   occurrenceContext?: PracticeOccurrenceContext;
   initialPhase?: PracticePhase;
   initialSupportLevel?: RecallSupportLevel;
@@ -64,6 +67,7 @@ export interface PracticeSession {
   blockedCardIds: string[];
   context: PracticeContext | null;
   completed: boolean;
+  returnPlan?: ReturnPlan;
   emptyReason:
     | CourseReplayEmptyReason
     | "blocked-content"
@@ -75,12 +79,14 @@ export interface PracticeSession {
     | "focused-card-mastered"
     | "focused-card-ineligible"
     | "focused-card-not-weak"
+    | "return-plan-empty"
     | null;
 }
 
 export interface BuildPracticeSessionInput {
   scope: PracticeScope;
   courses: Course[];
+  learningPaths?: readonly LearningPath[];
   cards: SentenceCard[];
   reviewStates: ReviewState[];
   learningStates: SentenceLearningState[];
@@ -92,6 +98,31 @@ export interface BuildPracticeSessionInput {
 export function buildPracticeSession(input: BuildPracticeSessionInput): PracticeSession {
   const scope = input.scope;
   const learningStates = input.learningStates;
+
+  if (scope.kind === "return") {
+    const courseById = new Map(input.courses.map((course) => [course.id, course]));
+    const courseOrder = [...new Set([
+      ...(input.learningPaths ?? []).flatMap((path) => path.courseIds),
+      ...input.courses.map((course) => course.id),
+    ])];
+    const cardById = new Map(input.cards.map((card) => [card.id, card]));
+    const orderedIds = [...new Set([
+      ...courseOrder.flatMap((id) => courseById.get(id)?.units.flatMap((unit) => unit.lessons.flatMap((lesson) => lesson.cardIds)) ?? []),
+      ...input.cards.map((card) => card.id),
+    ])];
+    const orderedCards = orderedIds.flatMap((id) => cardById.has(id) ? [cardById.get(id)!] : []);
+    const returnPlan = buildReturnPlan({ ...input, cards: orderedCards, minutes: scope.minutes });
+    return {
+      scope,
+      items: returnPlan.items,
+      blockedCardIds: returnPlan.blockedCardIds,
+      context: null,
+      completed: returnPlan.items.length === 0,
+      emptyReason: returnPlan.items.length ? null
+        : returnPlan.blockedCardIds.length ? "blocked-content" : "return-plan-empty",
+      returnPlan,
+    };
+  }
 
   if (scope.kind === "focused") {
     const card = input.cards.find((candidate) => candidate.id === scope.cardId);

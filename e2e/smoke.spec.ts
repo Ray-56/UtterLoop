@@ -4,21 +4,35 @@ import {
   expectAppReady,
   openReadyApp,
   STARTER_LESSON_URL,
+  seedUtterLoopIndexedDb,
+  readUtterLoopIndexedDbRecord,
   test,
 } from "./fixtures";
 
 async function enterStarterRecall(page: Page): Promise<void> {
   await openReadyApp(page, STARTER_LESSON_URL);
   await page.getByRole("button", { name: "Skip Quick Start" }).click();
-  await page.getByRole("button", { name: "Start recall" }).click();
+  await expect(page.getByLabel(/Quick Start, step/)).toHaveCount(0);
+  await page.getByLabel("Type the target sentence").press("Enter");
   await expect(page.getByLabel("First exposure")).toHaveCount(0);
 }
 
-function observeBrowserDiagnostics(page: Page): string[] {
+function observeBrowserDiagnostics(page: Page) {
   const diagnostics: string[] = [];
+  const pendingConsoleReads: Promise<void>[] = [];
   page.on("pageerror", (error) => diagnostics.push(`pageerror: ${error.message}`));
   page.on("console", (message) => {
-    if (message.type() === "error") diagnostics.push(`console: ${message.text()}`);
+    if (message.type() !== "error") return;
+    const index = diagnostics.push(`console: ${message.text()} location=${JSON.stringify(message.location())}`) - 1;
+    pendingConsoleReads.push(Promise.all(message.args().map(async (argument) => {
+      try {
+        return await argument.evaluate((value) => {
+          if (typeof value === "string") return value;
+          if (value instanceof Error) return value.stack ?? value.message;
+          try { return JSON.stringify(value) ?? String(value); } catch { return String(value); }
+        });
+      } catch { return "<console argument unavailable>"; }
+    })).then((arguments_) => { diagnostics[index] += ` args=${JSON.stringify(arguments_)}`; }));
   });
   page.on("requestfailed", (request) => {
     diagnostics.push(`requestfailed: ${request.method()} ${request.url()}`);
@@ -28,13 +42,20 @@ function observeBrowserDiagnostics(page: Page): string[] {
       diagnostics.push(`response: ${response.status()} ${response.url()}`);
     }
   });
-  return diagnostics;
+  return { diagnostics, pendingConsoleReads };
 }
 
 const smokeTest = test.extend<{ browserDiagnostics: string[] }>({
   browserDiagnostics: [async ({ page }, use) => {
-    const diagnostics = observeBrowserDiagnostics(page);
+    const { diagnostics, pendingConsoleReads } = observeBrowserDiagnostics(page);
+    await page.addInitScript(() => {
+      const original = console.error;
+      console.error = (...arguments_: unknown[]) => original.call(console, ...arguments_, {
+        browserStack: new Error("Browser console error").stack,
+      });
+    });
     await use(diagnostics);
+    await Promise.all(pendingConsoleReads);
     expect(diagnostics).toEqual([]);
   }, { auto: true }],
 });
@@ -45,7 +66,7 @@ smokeTest("cross-browser smoke runs only in Firefox and WebKit", ({ browserName 
 
 smokeTest("starts without console, page, request, or asset errors", async ({ page }) => {
   await openReadyApp(page);
-  await expect(page.getByRole("heading", { name: "Practice session" })).toHaveClass(/sr-only/);
+  await expect(page.getByRole("heading", { name: "Practice session", exact: true })).toHaveClass(/sr-only/);
   await expect(page.locator(".workspace-practice > .workspace-header")).toHaveCount(0);
 });
 
@@ -77,22 +98,23 @@ smokeTest("accepts immediate contraction input when Quick Start begins recall", 
   await openReadyApp(page, STARTER_LESSON_URL);
   await expect(page.getByLabel("Quick Start, step 1 of 6")).toBeVisible();
 
-  await page.getByRole("button", { name: "Start recall" }).click();
-  await expect(page.getByLabel("Quick Start, step 2 of 6")).toBeVisible();
-
   const capture = page.getByLabel("Type the target sentence");
+  await capture.press("H");
+  await expect(page.getByLabel("Quick Start, step 2 of 6")).toBeVisible();
+  await expect(capture).toHaveValue("H");
+
   await capture.fill("Hello, my name is Emma.");
   await capture.press("Enter");
   await page.getByRole("button", { name: "Next, shortcut Enter" }).click();
 
   const step3 = page.getByLabel("Quick Start, step 3 of 6");
   await expect(step3).toBeVisible();
-  await expect(step3).toContainText("Start recall when you're ready");
+  await expect(step3).toContainText("Type, press Enter, or tap the word track");
   await expect(step3).not.toContainText("in your own typing");
   await expect(page.getByText("我是这个班的新同学。", { exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: "Start recall" }).click();
-  await page.keyboard.type("i'm");
+  await capture.press("i");
+  await page.keyboard.type("'m");
 
   await expect(capture).toHaveValue("i'm");
   await expect(page.getByRole("button", { name: "Edit word 1" })).toContainText("i'm");
@@ -116,4 +138,32 @@ smokeTest("recovers the active sentence and draft after reload", async ({ page }
     "Practice restored. Your draft and recall turn are ready.",
     { exact: true },
   )).toBeVisible();
+});
+
+smokeTest("runs an authored Studio recall without exposing its answer before checking", async ({ page }) => {
+  await openReadyApp(page, "/?view=practice&studio=family");
+  await page.getByRole("button", { name: "Learn 3 variants", exact: true }).first().click();
+  await expect(page.locator(".studio-answer")).toContainText("Could you send me the file?");
+  await page.getByRole("button", { name: "Start recall", exact: true }).click();
+  await expect(page.locator(".studio-answer")).toBeEmpty();
+  await expect(page.getByText("Could you send me the file?", { exact: true })).toHaveCount(0);
+  const input = page.getByLabel("Studio sentence input", { exact: true });
+  await input.focus(); await input.pressSequentially("Could you send me the file?"); await input.press("Enter");
+  await expect(page.locator(".studio-result")).toContainText("Expression recalled.");
+  const document = await readUtterLoopIndexedDbRecord(page, "learningStudio", "local");
+  expect(document?.attempts).toHaveLength(1);
+});
+
+smokeTest("loads optional typing and persists a separate pass", async ({ page }) => {
+  await openReadyApp(page, "/?view=settings");
+  const at = new Date(Date.now() - 86_400_000).toISOString();
+  await seedUtterLoopIndexedDb(page, { sentenceLearningStates: [{ cardId: "sf-001", introducedAt: at,
+    firstPassedAt: at, firstPassSource: "independent-recall" }] });
+  await page.goto("/?view=practice&studio=fluency"); await expectAppReady(page);
+  await page.getByRole("button", { name: "Start typing pass", exact: true }).first().click();
+  const input = page.getByLabel("Type the visible sentence for a Fluency Pass");
+  await input.focus(); await input.pressSequentially("Hello, my name is Emma."); await input.press("Enter");
+  await expect(page.locator(".fluency-result").getByRole("button", { name: "Return to learning", exact: true })).toBeEnabled();
+  const document = await readUtterLoopIndexedDbRecord(page, "learningStudio", "local");
+  expect(document?.fluencyResults).toHaveLength(1);
 });

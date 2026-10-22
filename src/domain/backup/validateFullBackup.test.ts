@@ -4,15 +4,47 @@ import type { PracticeAttemptLogEntry, PracticeSignalLogEntry } from "../practic
 import type { PracticeSessionEvidence } from "../practice/PracticeSessionEvidence";
 import type { UtterLoopFullBackup } from "./UtterLoopFullBackup";
 import { validateFullBackup } from "./validateFullBackup";
+import { createPersonalSentence } from "../studio/studioRules";
 
 describe("validateFullBackup", () => {
+  it("normalizes v1 and v2 imports with empty Studio evidence and no invented sessions", () => {
+    for (const legacy of [validBackup(), currentBackup()]) {
+      const normalized = validateFullBackup(legacy);
+      expect(normalized.schemaVersion).toBe(3);
+      expect(normalized.learning.studio).toEqual({
+        id: "local", schemaVersion: 1, revision: 0, personalSentences: [], attempts: [],
+        signals: [], fluencyResults: [], closedSessionIds: [],
+      });
+    }
+  });
+
+  it("round-trips v3 personal content and rejects a draft smuggled into its portable Studio", () => {
+    const backup = validateFullBackup(currentBackup());
+    backup.learning.studio.personalSentences = [createPersonalSentence({
+      id: "personal-1", prompt: "说明你想再次核实信息。", english: "Let me double-check that.",
+      source: "Verified personal notes", confirmed: true,
+    }, new Date("2026-10-22T00:00:00.000Z"))];
+    expect(validateFullBackup(JSON.parse(JSON.stringify(backup)))).toEqual(backup);
+    Object.assign(backup.learning.studio, { checkpoint: { draft: "private" } });
+    expect(() => validateFullBackup(backup)).toThrow("learning.studio.checkpoint");
+  });
+
+  it("rejects a private sentence that would impersonate a catalog card after restore", () => {
+    const backup = validateFullBackup(currentBackup());
+    backup.learning.studio.personalSentences = [createPersonalSentence({
+      id: "card-1", prompt: "说明你想再次核实信息。", english: "Let me double-check that.",
+      source: "Verified personal notes", confirmed: true,
+    }, new Date("2026-10-22T00:00:00.000Z"))];
+    expect(() => validateFullBackup(backup)).toThrow("learning.studio.personalSentences[0].id");
+  });
+
   it("accepts and returns a complete backup with more than 500 log rows", () => {
     const backup = validBackup(502);
 
     const validated = validateFullBackup(backup, "2026-08-01T00:00:00.000Z");
 
-    expect(validated.schemaVersion).toBe(2);
-    expect(validated.databaseSchemaVersion).toBe(6);
+    expect(validated.schemaVersion).toBe(3);
+    expect(validated.databaseSchemaVersion).toBe(7);
     expect(validated.learning.practiceLog).toHaveLength(502);
     expect(validated.learning.practiceLog[501]?.id).toBe("turn-attempt:turn-501:0");
     expect(validated.learning.practiceSessionEvidence).toEqual([]);
@@ -166,7 +198,7 @@ describe("validateFullBackup", () => {
 
   it("rejects an unsupported schema version with its path", () => {
     const backup = validBackup() as unknown as Record<string, unknown>;
-    backup.schemaVersion = 3;
+    backup.schemaVersion = 99;
 
     expect(() => validateFullBackup(backup)).toThrow("schemaVersion");
   });

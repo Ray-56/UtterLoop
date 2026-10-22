@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type CSSProperties } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
 import { ChevronDown, Keyboard } from "lucide-react";
 import type { FingerGuideMode } from "../../domain/backup/UtterLoopFullBackup";
 import {
@@ -19,6 +19,7 @@ interface FingerGuideProps {
 const FINGERS = ["pinky", "ring", "middle", "index", "thumb"] as const;
 const HANDS = ["left", "right"] as const;
 const ROW_REACH = [-70, -36, -2, 32, 12] as const;
+const FULL_GUIDE_HEIGHT_QUERY = "(max-height: 640px)";
 const FINGER_ANCHORS: Record<string, number> = {
   "left-pinky": 17,
   "left-ring": 24,
@@ -33,18 +34,30 @@ const FINGER_ANCHORS: Record<string, number> = {
 
 export function FingerGuide({ mode, stroke, pulse, isMuted }: FingerGuideProps) {
   const panelId = useId();
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const [isHeightConstrained, setIsHeightConstrained] = useState(false);
   const [manualExpansion, setManualExpansion] = useState<boolean | null>(null);
 
   useEffect(() => {
     setManualExpansion(null);
   }, [mode]);
 
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(FULL_GUIDE_HEIGHT_QUERY);
+    const updateConstraint = () => setIsHeightConstrained(mediaQuery.matches);
+
+    updateConstraint();
+    mediaQuery.addEventListener("change", updateConstraint);
+    return () => mediaQuery.removeEventListener("change", updateConstraint);
+  }, []);
+
   if (mode === "off") {
     return null;
   }
 
   const activeStroke = isMuted ? null : stroke;
-  const isExpanded = !isMuted && (manualExpansion ?? mode === "full");
+  const canExpand = !isMuted && !isHeightConstrained;
+  const isExpanded = canExpand && (manualExpansion ?? mode === "full");
   const activeCodes = new Set(
     activeStroke
       ? [activeStroke.code, activeStroke.shift?.code].filter((code) => code !== undefined)
@@ -53,6 +66,34 @@ export function FingerGuide({ mode, stroke, pulse, isMuted }: FingerGuideProps) 
   const pulseClass = activeStroke && pulse > 0
     ? `finger-guide-pulse-${pulse % 2 === 0 ? "even" : "odd"}`
     : "";
+  const toggleExpansion = () => {
+    setManualExpansion(!isExpanded);
+    window.requestAnimationFrame(() => toggleRef.current?.focus());
+  };
+  const toggleButton = (
+    <button
+      aria-controls={panelId}
+      aria-expanded={isExpanded}
+      aria-label={isHeightConstrained
+        ? "Full finger guide needs more vertical space"
+        : isExpanded
+          ? "Collapse full finger guide"
+          : "Show full finger guide"}
+      className="finger-guide-toggle"
+      disabled={!canExpand}
+      onClick={toggleExpansion}
+      ref={toggleRef}
+      title={isHeightConstrained
+        ? "Full keyboard needs a taller window"
+        : isExpanded
+          ? "Collapse keyboard"
+          : "Show full keyboard"}
+      type="button"
+    >
+      <ChevronDown aria-hidden="true" size={18} />
+      <span>{isExpanded ? "Compact" : "Full"}</span>
+    </button>
+  );
 
   return (
     <section
@@ -64,43 +105,33 @@ export function FingerGuide({ mode, stroke, pulse, isMuted }: FingerGuideProps) 
       ].filter(Boolean).join(" ")}
       data-mode={mode}
     >
-      <div className="finger-guide-compact">
-        <div className="finger-guide-compact-heading">
-          <Keyboard aria-hidden="true" size={17} />
-          <span>Finger guide</span>
+      {!isExpanded && (
+        <div className="finger-guide-compact">
+          <div className="finger-guide-compact-heading">
+            <Keyboard aria-hidden="true" size={17} />
+            <span>Finger guide</span>
+          </div>
+
+          <kbd className="finger-guide-active-key">
+            {activeStroke?.legend ?? "F J"}
+          </kbd>
+
+          <div className="finger-guide-recommendation">
+            <span>{activeStroke ? `Pressed ${activeStroke.legend}` : "Home row"}</span>
+            <strong>
+              {activeStroke
+                ? `Recommended: ${assignmentLabel(activeStroke.primary)}`
+                : "Rest on ASDF · JKL;"}
+            </strong>
+            {activeStroke?.shift && (
+              <small>Shift: {assignmentLabel(activeStroke.shift.assignment)}</small>
+            )}
+          </div>
+
+          <FingerStrip stroke={activeStroke} />
+          {toggleButton}
         </div>
-
-        <kbd className="finger-guide-active-key">
-          {activeStroke?.legend ?? "F J"}
-        </kbd>
-
-        <div className="finger-guide-recommendation">
-          <span>{activeStroke ? `Pressed ${activeStroke.legend}` : "Home row"}</span>
-          <strong>
-            {activeStroke
-              ? `Recommended: ${assignmentLabel(activeStroke.primary)}`
-              : "Rest on ASDF · JKL;"}
-          </strong>
-          {activeStroke?.shift && (
-            <small>Shift: {assignmentLabel(activeStroke.shift.assignment)}</small>
-          )}
-        </div>
-
-        <FingerStrip stroke={activeStroke} />
-
-        <button
-          aria-controls={panelId}
-          aria-expanded={isExpanded}
-          aria-label={isExpanded ? "Collapse full finger guide" : "Show full finger guide"}
-          className="finger-guide-toggle"
-          onClick={() => setManualExpansion(!isExpanded)}
-          title={isExpanded ? "Collapse keyboard" : "Show full keyboard"}
-          type="button"
-        >
-          <ChevronDown aria-hidden="true" size={18} />
-          <span>{isExpanded ? "Compact" : "Full"}</span>
-        </button>
-      </div>
+      )}
 
       {isExpanded && (
         <div className="finger-guide-full" id={panelId}>
@@ -109,7 +140,7 @@ export function FingerGuide({ mode, stroke, pulse, isMuted }: FingerGuideProps) 
               <span>ANSI QWERTY map</span>
               <strong>{fullGuideLegend(activeStroke)}</strong>
             </div>
-            <span>Primary key and modifier use different highlights</span>
+            {toggleButton}
           </header>
           <FullKeyboard activeCodes={activeCodes} activeStroke={activeStroke} />
         </div>

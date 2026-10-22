@@ -34,6 +34,7 @@ import {
   type BetaReadinessSnapshot,
 } from "../beta-readiness/BetaReadiness";
 import type { PracticeSessionStore } from "../ports/PracticeSessionStore";
+import { summarizePracticeStatistics } from "../../domain/progress/practiceStatistics";
 import type { PracticeSessionCheckpointV2 } from "../practice-session/PracticeSessionCheckpoint";
 
 export const BETA_READINESS_WINDOW_DAYS = 14 as const;
@@ -57,7 +58,9 @@ export interface TrainingSnapshot {
   sentenceLearningStates: SentenceLearningState[];
   recentPracticeActivity: RecentPracticeActivity;
   reviewDashboard: ReviewDashboard;
-  progressDashboard: ProgressDashboard;
+  progressDashboard: ProgressDashboard | null;
+  analyticsAsOf: string | null;
+  focusedWeakCardIds: string[] | null;
   betaReadiness: BetaReadinessSnapshot | null;
   queue: PracticeQueue;
   courseProgress: CourseProgress[];
@@ -66,27 +69,19 @@ export interface TrainingSnapshot {
   preferences: AppPreferences;
 }
 
-export async function getTrainingSnapshot(repository: TrainingRepository, now: Date): Promise<TrainingSnapshot> {
-  const betaEvidencePromise = isBetaReadinessRepository(repository)
-    ? Promise.all([
-        repository.listAllPracticeLog(),
-        repository.listEvidence(),
-        repository.getMeasurementEpoch(),
-        repository.loadActiveCheckpoint(),
-      ])
-    : Promise.resolve(null);
+export interface CompleteTrainingSnapshot extends TrainingSnapshot {
+  progressDashboard: ProgressDashboard;
+  analyticsAsOf: string;
+  focusedWeakCardIds: string[];
+}
+
+export async function getPracticeSnapshot(
+  repository: TrainingRepository,
+  now: Date,
+): Promise<TrainingSnapshot> {
   const [
-    categories,
-    learningPaths,
-    courses,
-    cards,
-    reviewStates,
-    sentenceLearningStates,
-    recentPracticeActivity,
-    practiceStatistics,
-    vocabularyEntries,
-    storedPreferences,
-    betaEvidence,
+    categories, learningPaths, courses, cards, reviewStates,
+    sentenceLearningStates, recentPracticeActivity, vocabularyEntries, storedPreferences,
   ] = await Promise.all([
     repository.listCourseCategories(),
     repository.listLearningPaths(),
@@ -95,20 +90,13 @@ export async function getTrainingSnapshot(repository: TrainingRepository, now: D
     repository.listReviewStates(),
     repository.listSentenceLearningStates(),
     repository.listRecentPracticeActivity(),
-    repository.getPracticeStatistics(now, 14),
     repository.listVocabularyEntries(),
     repository.getAppPreferences(),
-    betaEvidencePromise,
   ]);
 
   return {
-    categories,
-    learningPaths,
-    courses,
-    cards,
-    reviewStates,
-    sentenceLearningStates,
-    recentPracticeActivity,
+    categories, learningPaths, courses, cards, reviewStates,
+    sentenceLearningStates, recentPracticeActivity, vocabularyEntries,
     reviewDashboard: buildReviewDashboard({
       cards,
       courses,
@@ -117,36 +105,66 @@ export async function getTrainingSnapshot(repository: TrainingRepository, now: D
       vocabularyEntries,
       selectedCourseId: null,
     }, now),
-    progressDashboard: deriveProgressDashboard({
-      cards,
-      courses,
-      learningPaths,
-      learningStates: sentenceLearningStates,
-      reviewStates,
-      statistics: practiceStatistics,
-    }, now, practiceStatistics.timeZone),
+    progressDashboard: null,
+    betaReadiness: null,
+    analyticsAsOf: null,
+    focusedWeakCardIds: null,
+    queue: buildPracticeQueue(cards, reviewStates, now),
+    courseProgress: courses.map((course) => deriveCourseProgress(course, sentenceLearningStates)),
+    pathProgress: learningPaths.map((path) => deriveLearningPathProgress(path, courses, sentenceLearningStates)),
+    preferences: storedPreferences
+      ? normalizeAppPreferences(storedPreferences)
+      : { ...DEFAULT_APP_PREFERENCES },
+  };
+}
+
+export async function getTrainingSnapshot(
+  repository: TrainingRepository,
+  now: Date,
+): Promise<CompleteTrainingSnapshot> {
+  const [practice, betaEvidence] = await Promise.all([
+    getPracticeSnapshot(repository, now),
+    isBetaReadinessRepository(repository)
+      ? Promise.all([
+          repository.listAllPracticeLog(),
+          repository.listEvidence(),
+          repository.getMeasurementEpoch(),
+          repository.loadActiveCheckpoint(),
+        ])
+      : null,
+  ]);
+  const statistics = betaEvidence
+    ? summarizePracticeStatistics(betaEvidence[0], now, 14)
+    : await repository.getPracticeStatistics(now, 14);
+  const progressDashboard = deriveProgressDashboard({
+    cards: practice.cards,
+    courses: practice.courses,
+    learningPaths: practice.learningPaths,
+    learningStates: practice.sentenceLearningStates,
+    reviewStates: practice.reviewStates,
+    statistics,
+  }, now, statistics.timeZone);
+
+  return {
+    ...practice,
+    progressDashboard,
+    analyticsAsOf: now.toISOString(),
+    focusedWeakCardIds: progressDashboard.needsAttention.weakCards.map((card) => card.cardId),
     betaReadiness: betaEvidence
       ? BetaReadiness.measure({
           asOf: now,
-          timeZone: practiceStatistics.timeZone,
+          timeZone: statistics.timeZone,
           sessionWindowDays: BETA_READINESS_WINDOW_DAYS,
           inactivityThresholdMs: BETA_SESSION_INACTIVITY_THRESHOLD_MS,
           measurementEpoch: betaEvidence[2],
           activeCheckpoint: projectActiveCheckpoint(betaEvidence[3]),
-          cards,
-          learningStates: sentenceLearningStates,
-          reviewStates,
+          cards: practice.cards,
+          learningStates: practice.sentenceLearningStates,
+          reviewStates: practice.reviewStates,
           practiceLog: betaEvidence[0],
           sessionEvidence: betaEvidence[1],
         })
       : null,
-    queue: buildPracticeQueue(cards, reviewStates, now),
-    courseProgress: courses.map((course) => deriveCourseProgress(course, sentenceLearningStates)),
-    pathProgress: learningPaths.map((path) => deriveLearningPathProgress(path, courses, sentenceLearningStates)),
-    vocabularyEntries,
-    preferences: storedPreferences
-      ? normalizeAppPreferences(storedPreferences)
-      : { ...DEFAULT_APP_PREFERENCES },
   };
 }
 

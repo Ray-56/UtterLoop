@@ -4,7 +4,10 @@ import type {
 } from "../../application/use-cases/buildPracticeSession";
 import type { PracticeTurn } from "../../domain/practice/PracticeTurn";
 import type { PracticeLogEntry } from "../../domain/practice/PracticeLogEntry";
-import type { PracticeSessionCheckpointSeed } from "../../application/practice-session/PracticeSessionLifecycle";
+import type { ReviewState } from "../../domain/review/ReviewState";
+import { createInitialReviewState, isReviewDue } from "../../domain/review/reviewScheduler";
+import { inspectSentenceCardRecallSafety } from "../../domain/content/inspectSentenceCardRecallSafety";
+import { PRACTICE_SESSION_RESUME_MAX_AGE_MS, type PracticeSessionCheckpointSeed } from "../../application/practice-session/PracticeSessionLifecycle";
 import {
   catalogFingerprint,
   createResolvedPracticeOccurrence,
@@ -60,6 +63,7 @@ export interface RestoreWorkbenchPracticeSessionCheckpointInput {
   items: readonly PracticeSessionItem[];
   catalog: PracticeSessionCatalog;
   masteredCardIds: readonly string[];
+  reviewStates?: readonly ReviewState[];
   durableEvidence: readonly DurablePracticeEvidence[];
   now: Date;
 }
@@ -283,6 +287,11 @@ export function restoreWorkbenchPracticeSessionCheckpoint(
   });
   if (resolved.status === "discard") return resolved;
 
+  const savedReturnItems = resolveReturnPlanCheckpointItems({
+    checkpoint: resolved.checkpoint, scope: input.scope, catalog: input.catalog,
+    reviewStates: input.reviewStates ?? [], now: input.now,
+  });
+
   const savedCurrentIndex = resolved.checkpoint.itinerary.findIndex(
     (occurrence) => occurrence.id === resolved.checkpoint.currentOccurrenceId,
   );
@@ -296,7 +305,9 @@ export function restoreWorkbenchPracticeSessionCheckpoint(
   const restoredOccurrences: ResolvedPracticeOccurrence[] = [];
   for (const [occurrenceIndex, occurrence] of resolved.checkpoint.itinerary.entries()) {
     const candidates = itemsByContext.get(occurrenceKey(occurrence)) ?? [];
-    const item = candidates[Math.min(occurrence.returnIndex, candidates.length - 1)];
+    const item = input.scope.kind === "return"
+      ? savedReturnItems.find((candidate) => candidate.card.id === occurrence.cardId)
+      : candidates[Math.min(occurrence.returnIndex, candidates.length - 1)];
     if (!item) {
       if (canOmitCompletedLessonPredecessor(
         input.scope,
@@ -368,6 +379,44 @@ export function restoreWorkbenchPracticeSessionCheckpoint(
       pendingReturnStrategy: PENDING_RETURN_RECOVERY_STRATEGY,
     },
   };
+}
+
+/** Resolve a saved bounded itinerary before selecting any replacement due work. */
+export function resolveReturnPlanCheckpointItems(input: {
+  checkpoint: unknown;
+  scope: PracticeScope;
+  catalog: PracticeSessionCatalog;
+  reviewStates: readonly ReviewState[];
+  now: Date;
+}): PracticeSessionItem[] {
+  if (input.scope.kind !== "return") return [];
+  const validation = validatePracticeSessionCheckpoint(input.checkpoint);
+  if (!validation.ok || validation.checkpoint.schemaVersion !== 2) return [];
+  const checkpoint = validation.checkpoint;
+  if (input.now.getTime() - Date.parse(checkpoint.updatedAt) > PRACTICE_SESSION_RESUME_MAX_AGE_MS) return [];
+  if (checkpoint.scopeKey !== practiceScopeKey(input.scope)
+    || checkpoint.catalogFingerprint !== catalogFingerprint(input.scope, input.catalog)) return [];
+  const cardById = new Map(input.catalog.cards.map((card) => [card.id, card]));
+  const reviewByCard = new Map(input.reviewStates.map((state) => [state.cardId, state]));
+  const items: PracticeSessionItem[] = [];
+  for (const occurrence of checkpoint.itinerary) {
+    const card = cardById.get(occurrence.cardId);
+    const currentReview = reviewByCard.get(occurrence.cardId);
+    if (!card || !inspectSentenceCardRecallSafety(card).safe || currentReview?.learningStatus === "mastered") return [];
+    const reviewState = currentReview ?? createInitialReviewState(card.id, input.now);
+    items.push({
+      card, reviewState, isDue: isReviewDue(reviewState, input.now),
+      initialPhase: occurrence.turn.phase,
+      queueReason: occurrence.queueReason ?? "voluntary-practice",
+      explanation: occurrence.queueReason === "due-review"
+        ? "Selected as due Review in your saved bounded plan."
+        : occurrence.queueReason === "new-learning"
+          ? "Continue acquisition in your saved bounded plan; instruction comes before recall."
+          : "Optional weak-card practice in your saved bounded plan; its Review schedule stays separate.",
+      ...(occurrence.scheduledReviewDueAt ? { scheduledReviewDueAt: occurrence.scheduledReviewDueAt } : {}),
+    });
+  }
+  return items;
 }
 
 function canOmitCompletedLessonPredecessor(

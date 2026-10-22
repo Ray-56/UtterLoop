@@ -2,6 +2,8 @@ import type { PracticeSessionScope } from "./model";
 
 export function practiceScopeKey(scope: PracticeSessionScope): string {
   switch (scope.kind) {
+    case "return":
+      return `return:${scope.minutes}`;
     case "lesson":
       return `lesson:${escapePart(scope.courseId)}:${escapePart(scope.lessonId)}:${scope.mode}`;
     case "review":
