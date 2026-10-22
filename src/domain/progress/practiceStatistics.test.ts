@@ -3,6 +3,7 @@ import {
   createPracticeStatisticsState,
   finalizePracticeStatistics,
   reducePracticeStatistics,
+  summarizePracticeStatistics,
   type ProgressPracticeLogEntry,
 } from "./practiceStatistics";
 
@@ -24,6 +25,31 @@ function attempt(
 }
 
 describe("practice statistics", () => {
+  it("summarizes a batch identically to the immutable reducer without modifying its input", () => {
+    const logs: ProgressPracticeLogEntry[] = [
+      attempt("perfect"),
+      attempt("close", { cardId: "card-2", outcome: "close", accuracy: 0.75 }),
+      attempt("retry", { cardId: "card-2", outcome: "retry", accuracy: 0.25 }),
+      attempt("voluntary", { phase: "voluntary-practice" }),
+      attempt("assisted", { supportLevelUsed: 2 }),
+      attempt("correction", { phase: "corrective-practice", submissionIndex: 1 }),
+      {
+        ...attempt("signal"), kind: "signal", outcome: "revealed", accuracy: 0,
+        signalKinds: ["revealed", "skipped"],
+      },
+      attempt("old", { submittedAt: "2025-01-01T00:00:00.000Z" }),
+    ];
+    const original = structuredClone(logs);
+    const now = new Date("2026-08-01T12:00:00.000Z");
+    for (const timeZone of ["UTC", "Asia/Shanghai", "America/New_York"]) {
+      const expected = finalizePracticeStatistics(logs.reduce(
+        reducePracticeStatistics, createPracticeStatisticsState(now, timeZone),
+      ));
+      expect(summarizePracticeStatistics(logs, now, 14, timeZone)).toEqual(expected);
+    }
+    expect(logs).toEqual(original);
+  });
+
   it("reduces complete history beyond the recent 500-row window", () => {
     const logs = Array.from({ length: 650 }, (_, index) =>
       attempt(`attempt-${index}`, {

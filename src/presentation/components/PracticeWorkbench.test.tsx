@@ -19,8 +19,21 @@ import {
   shouldRetryAudioSaveBeforeCommand,
   transitionCheckpointAfterFirstExposure,
   visiblePracticeNotice,
+  resolveFluencyEntrySource,
   type PracticeFailedOperation,
 } from "./PracticeWorkbench";
+
+describe("optional Fluency Pass entry", () => {
+  it("offers typing only after a correct result or an explicit visible Answer", () => {
+    const hidden = { correctResult: false, corrected: false, answerWasRevealed: false, answerIsVisible: false };
+    expect(resolveFluencyEntrySource(hidden)).toBeNull();
+    expect(resolveFluencyEntrySource({ ...hidden, answerIsVisible: true })).toBeNull();
+    expect(resolveFluencyEntrySource({ ...hidden, answerWasRevealed: true })).toBeNull();
+    expect(resolveFluencyEntrySource({ ...hidden, correctResult: true })).toBe("correct");
+    expect(resolveFluencyEntrySource({ ...hidden, correctResult: true, corrected: true })).toBe("corrected");
+    expect(resolveFluencyEntrySource({ ...hidden, answerIsVisible: true, answerWasRevealed: true })).toBe("revealed");
+  });
+});
 
 describe("PracticeWorkbench blocked content recovery", () => {
   it("fails a blocked Quick Start closed without rendering target content or completion", () => {

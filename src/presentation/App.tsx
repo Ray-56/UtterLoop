@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { BarChart3, BookOpen, Keyboard, RotateCcw, Settings } from "lucide-react";
 import type { TrainingSnapshot } from "../application/use-cases/getTrainingSnapshot";
 import type { PracticeScope } from "../application/use-cases/buildPracticeSession";
@@ -20,8 +20,14 @@ import { PracticeWorkbench } from "./components/PracticeWorkbench";
 import { ProgressView } from "./components/ProgressView";
 import { ReviewView } from "./components/ReviewView";
 import { SettingsView } from "./components/SettingsView";
+import { StudioLaunchpad } from "./components/StudioLaunchpad";
+import { OptionalActivityBoundary, OptionalActivityLoading } from "./components/OptionalActivityBoundary";
+import { useLearningStudio } from "./hooks/useLearningStudio";
+import type { SentenceCard } from "../domain/content/SentenceCard";
+import type { FluencyResult } from "../domain/studio/LearningStudio";
 import { Shell } from "./components/Shell";
 import { usePersonalizationPreferences } from "./hooks/usePersonalizationPreferences";
+import { usePracticeOwnership } from "./hooks/usePracticeOwnership";
 import {
   useTrainingController,
   type ActivePracticeSessionSummary,
@@ -33,6 +39,7 @@ import {
   parseAppUrlState,
   type AppUrlState,
   type AppView,
+  type StudioView,
 } from "./appUrlState";
 import {
   resolvePracticeRoute,
@@ -49,7 +56,16 @@ const navigation = [
   { id: "settings", label: "Settings", icon: Settings },
 ] satisfies Array<{ id: AppView; label: string; icon: typeof Keyboard }>;
 
+const LearningStudioView = lazy(() => import("./components/LearningStudioView")
+  .then((module) => ({ default: module.LearningStudioView })));
+const FluencyPass = lazy(() => import("./components/FluencyPass")
+  .then((module) => ({ default: module.FluencyPass })));
+const FluencyProgress = lazy(() => import("./components/FluencyProgress")
+  .then((module) => ({ default: module.FluencyProgress })));
+
 export function App() {
+  // Browsers cache failed module imports, so retry in a fresh document.
+  const retryActivityLoad = () => window.location.reload();
   const [urlState, setUrlState] = useState<AppUrlState>(() => readInitialAppUrlState());
   const [reviewRouteNotice, setReviewRouteNotice] = useState<string | null>(null);
   const controller = useTrainingController();
@@ -66,7 +82,17 @@ export function App() {
     (patch) => controller.updateAppPreferences(patch),
   );
   const activeView = urlState.view;
+  const studioTab = urlState.studio ?? null;
+  const [fluencyPass, setFluencyPass] = useState<{ card: SentenceCard; source: FluencyResult["source"] } | null>(null);
+  const studio = useLearningStudio(snapshot !== null
+    && (studioTab !== null || fluencyPass !== null || activeView === "courses" || activeView === "progress"),
+  controller.learningStudioStore, controller.getAllPracticeLog);
+  const acquiredIds = new Set(snapshot?.sentenceLearningStates.filter((state) => state.firstPassedAt).map((state) => state.cardId) ?? []);
+  const learnedCards = snapshot?.cards.filter((card) => acquiredIds.has(card.id)) ?? [];
   const practiceScope = urlState.practiceScope as PracticeScope | null;
+  const ownership = usePracticeOwnership(controller, activeView === "practice"
+    && snapshot !== null && controller.status !== "loading" && controller.status !== "error");
+  const needsFocusedAnalytics = practiceScope?.kind === "focused" && snapshot?.focusedWeakCardIds === null;
   const catalogQuery = urlState.catalog.query;
   const catalogResultLimit = urlState.catalog.resultLimit;
   const selectedCourseId = urlState.catalog.selectedCourseId;
@@ -82,6 +108,11 @@ export function App() {
   }, [selectedReviewCourseId, snapshot]);
   const progressDashboard = snapshot?.progressDashboard ?? null;
   const activeQuickStartRef = useRef<QuickStartSession | null>(null);
+
+  useEffect(() => {
+    if (snapshot && (activeView === "progress" || needsFocusedAnalytics)
+      && controller.analyticsStatus === "deferred") void controller.loadAnalytics().catch(() => undefined);
+  }, [activeView, needsFocusedAnalytics, snapshot, controller.analyticsStatus, controller.loadAnalytics]);
 
   useEffect(() => {
     if (!snapshot) return;
@@ -166,7 +197,7 @@ export function App() {
     isCourseDetail = false,
   ): void {
     const canonicalState = state.practiceScope
-      ? { ...state, practiceScopeWasInvalid: false }
+      ? { ...state, practiceScopeWasInvalid: false, studio: undefined }
       : state;
     setUrlState(canonicalState);
     writeBrowserUrl(canonicalState, mode, isCourseDetail);
@@ -178,6 +209,7 @@ export function App() {
       || practiceScope
       || urlState.practiceScopeWasInvalid
       || activeView !== "practice"
+      || studioTab
       || activePracticeSession === undefined
     ) {
       return;
@@ -187,7 +219,7 @@ export function App() {
     if (resolvedScope) {
       applyUrlState({ ...urlState, practiceScope: resolvedScope }, "replace");
     }
-  }, [activePracticeSession, activeView, practiceScope, snapshot, urlState]);
+  }, [activePracticeSession, activeView, practiceScope, snapshot, studioTab, urlState]);
 
   useEffect(() => {
     if (!snapshot || !urlState.reviewCourseId) {
@@ -263,12 +295,29 @@ export function App() {
   }
 
   function navigate(view: AppView) {
-    if (view === activeView && (view !== "courses" || !selectedCourseId)) {
+    if (view === activeView && !studioTab && !fluencyPass && (view !== "courses" || !selectedCourseId)) {
       return;
     }
 
     setReviewRouteNotice(null);
-    applyUrlState(buildPrimaryNavigationState(urlState, view), "push");
+    setFluencyPass(null);
+    applyUrlState({ ...buildPrimaryNavigationState(urlState, view), studio: undefined }, "push");
+  }
+
+  function openStudio(tab: StudioView) {
+    setFluencyPass(null);
+    applyUrlState({ ...urlState, view: "practice", studio: tab, practiceScope: null, practiceScopeWasInvalid: false }, "push");
+  }
+
+  function startReturnPlan(minutes: 3 | 8 | 15) {
+    applyUrlState({ ...urlState, view: "practice", practiceScope: { kind: "return", minutes }, studio: undefined }, "push");
+  }
+
+  function startFluency(card: SentenceCard, source: FluencyResult["source"] = "learned") {
+    if (activeView !== "practice") {
+      applyUrlState({ ...urlState, view: "practice", studio: "fluency", practiceScope: null }, "push");
+    }
+    setFluencyPass({ card, source });
   }
 
   function changeCatalogQuery(query: CourseCatalogQuery) {
@@ -356,7 +405,44 @@ export function App() {
       status={controller.status}
     >
       {activeView === "practice" && (
-        snapshot && !practiceScope && activePracticeSession === undefined ? (
+        snapshot && ownership.status !== "owned" ? (
+          <PracticeAccessNotice
+            status={ownership.status}
+            message={ownership.message}
+            onRetry={ownership.retry}
+            onTakeOver={ownership.takeOver}
+            onReload={() => window.location.reload()}
+          />
+        ) : snapshot && fluencyPass ? (
+          <OptionalActivityBoundary key="fluency" title="Fluency Pass" onRetry={retryActivityLoad}>
+          <Suspense fallback={<OptionalActivityLoading title="Fluency Pass" />}>
+          <FluencyPass key={`${fluencyPass.card.id}:${fluencyPass.source}`}
+            card={fluencyPass.card} source={fluencyPass.source}
+            learnedCards={learnedCards} results={studio.document?.fluencyResults ?? []}
+            onSave={async (result) => { await studio.run((service) => service.saveFluency(result)); }}
+            onClose={() => setFluencyPass(null)} onStartCard={(card) => startFluency(card)}
+            keySoundMuted={snapshot.preferences.keySoundMuted}
+            onKeySoundMutedChange={(muted) => controller.updateAppPreferences({ keySoundMuted: muted })}
+          />
+          </Suspense>
+          </OptionalActivityBoundary>
+        ) : snapshot && studioTab ? (
+          <OptionalActivityBoundary key="studio" title="Learning Studio" onRetry={retryActivityLoad}>
+          <Suspense fallback={<OptionalActivityLoading title="Learning Studio" />}>
+          <LearningStudioView tab={studioTab} snapshot={snapshot} studio={studio}
+            onNavigate={openStudio} onClose={() => navigate("courses")} onReturnPlan={startReturnPlan}
+            onMasterCard={(id) => controller.setReviewLearningStatus(id, "mastered")}
+            onVocabularyCard={controller.setVocabularyStatus}
+            onCatalogSignal={controller.recordStudioCatalogSignal}
+            keySoundMuted={snapshot.preferences.keySoundMuted}
+            onMutedChange={(muted) => controller.updateAppPreferences({ keySoundMuted: muted })}
+            fluencyContent={<FluencyProgress results={studio.document?.fluencyResults ?? []} learnedCards={learnedCards} onStartCard={(card) => startFluency(card)} />}
+          />
+          </Suspense>
+          </OptionalActivityBoundary>
+        ) : needsFocusedAnalytics ? (
+          <AnalyticsNotice error={controller.analyticsError} onRetry={() => void controller.loadAnalytics().catch(() => undefined)} />
+        ) : snapshot && !practiceScope && activePracticeSession === undefined ? (
           <section aria-live="polite" className="center-panel">
             <Keyboard aria-hidden="true" size={28} />
             <h3>Checking your active Practice Session</h3>
@@ -379,6 +465,7 @@ export function App() {
             onOpenCourse={openCourse}
             onOpenCourses={() => navigate("courses")}
             onOpenReview={openCourseReview}
+            onStartFluency={startFluency}
             onResumeActivePractice={(scope) => applyUrlState({
               ...urlState,
               view: "practice",
@@ -392,6 +479,8 @@ export function App() {
         )
       )}
       {activeView === "courses" && (
+        <>
+        <StudioLaunchpad onOpen={openStudio} />
         <CoursesView
           catalogQuery={catalogQuery}
           cards={snapshot?.cards ?? []}
@@ -408,6 +497,7 @@ export function App() {
           resultLimit={catalogResultLimit}
           selectedCourseId={selectedCourseId}
         />
+        </>
       )}
       {activeView === "review" && (
         <>
@@ -433,18 +523,63 @@ export function App() {
         </>
       )}
       {activeView === "progress" && (
-        <ProgressView
-          betaReadiness={snapshot?.betaReadiness ?? null}
-          dashboard={progressDashboard}
-          onPracticeWeakCard={startFocusedPractice}
-          recentActivity={snapshot?.recentPracticeActivity}
-        />
+        controller.analyticsStatus !== "loaded" ? (
+          <AnalyticsNotice error={controller.analyticsError} onRetry={() => void controller.loadAnalytics().catch(() => undefined)} />
+        ) : (
+          <>
+            <div className="analytics-toolbar">
+              <p className="muted-copy">Updated {snapshot?.analyticsAsOf ? new Date(snapshot.analyticsAsOf).toLocaleTimeString() : "just now"}</p>
+              <button className="secondary-button" onClick={() => void controller.loadAnalytics({ force: true }).catch(() => undefined)} type="button">Refresh learning evidence</button>
+            </div>
+            <ProgressView
+              betaReadiness={snapshot?.betaReadiness ?? null}
+              dashboard={progressDashboard}
+              onPracticeWeakCard={startFocusedPractice}
+              recentActivity={snapshot?.recentPracticeActivity}
+            />
+            <OptionalActivityBoundary key="typing-progress" title="Typing progress" onRetry={retryActivityLoad}>
+              <Suspense fallback={<OptionalActivityLoading title="Typing progress" />}>
+                <FluencyProgress results={studio.document?.fluencyResults ?? []} learnedCards={learnedCards} onStartCard={(card) => startFluency(card)} />
+              </Suspense>
+            </OptionalActivityBoundary>
+          </>
+        )
       )}
       {activeView === "settings" && (
         <SettingsView controller={controller} personalization={personalization} />
       )}
     </Shell>
   );
+}
+
+export function PracticeAccessNotice({ status, message, onRetry, onTakeOver, onReload }: {
+  status: string; message: string | null; onRetry(): void; onTakeOver(): void; onReload(): void;
+}) {
+  const waiting = status === "checking" || status === "inactive";
+  return (
+    <section className="center-panel" aria-live="polite" aria-labelledby="practice-access-title">
+      <Keyboard aria-hidden="true" size={28} />
+      <h3 id="practice-access-title">{waiting ? "Opening your local Practice" : status === "stale"
+        ? "Reload your updated learning data" : "Practice is open in another tab"}</h3>
+      <p>{message ?? "Checking which tab owns the active Practice session."}</p>
+      {!waiting && <div className="practice-actions">
+        {status === "stale" ? <button className="primary-button" onClick={onReload} type="button">Reload updated data</button>
+          : <>
+              <button className="secondary-button" onClick={onRetry} type="button">Retry access</button>
+              <button className="primary-button" onClick={onTakeOver} type="button">Take over Practice here</button>
+            </>}
+      </div>}
+    </section>
+  );
+}
+
+function AnalyticsNotice({ error, onRetry }: { error: string | null; onRetry(): void }) {
+  return <section className="center-panel" aria-live="polite">
+    <BarChart3 aria-hidden="true" size={28} />
+    <h3>{error ? "Learning evidence could not be loaded" : "Loading your learning evidence"}</h3>
+    <p>{error ?? "Reading your local history. Your practice data stays on this device."}</p>
+    {error && <button className="primary-button" onClick={onRetry} type="button">Retry learning evidence</button>}
+  </section>;
 }
 
 const EMPTY_REVIEW_DASHBOARD: ReviewDashboard = {

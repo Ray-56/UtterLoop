@@ -96,11 +96,13 @@ import { ConfirmationDialog } from "./ConfirmationDialog";
 import {
   createWorkbenchPracticeSessionCheckpointSeed,
   practiceLogEntriesToDurableEvidence,
+  resolveReturnPlanCheckpointItems,
   restoreWorkbenchPracticeSessionCheckpoint,
 } from "../practice-session/workbenchCheckpointAdapter";
 import type { PracticeSessionCheckpointV2 } from "../../application/practice-session/PracticeSessionCheckpoint";
 import { practiceLogContextForOccurrence } from "../../application/practice-session/PracticeSessionCheckpoint";
-import { catalogFingerprint } from "../practice-session";
+import { catalogFingerprint, validatePracticeSessionCheckpoint } from "../practice-session";
+import { PRACTICE_SESSION_RESUME_MAX_AGE_MS } from "../../application/practice-session/PracticeSessionLifecycle";
 import type {
   PracticeSessionEngagementReason,
   PracticeSessionRoundEvent,
@@ -108,6 +110,7 @@ import type {
 } from "../../application/practice-session/PracticeSessionLifecycle";
 import type { PracticeRoundSummary } from "../../domain/practice/PracticeSessionEvidence";
 import type { FingerGuideMode } from "../../domain/backup/UtterLoopFullBackup";
+import type { SentenceCard } from "../../domain/content/SentenceCard";
 
 interface PracticeWorkbenchProps {
   controller: TrainingController;
@@ -122,6 +125,7 @@ interface PracticeWorkbenchProps {
   onKeySoundMutedChange(isMuted: boolean): Promise<unknown> | unknown;
   onResumeActivePractice(scope: PracticeScope): void;
   onStartLesson(courseId: string, lessonId: string): void;
+  onStartFluency?(card: SentenceCard, source: "correct" | "corrected" | "revealed"): void;
   quickStartSession: QuickStartSession | null;
   scope: PracticeScope | null;
   speechVoiceUri: string | null;
@@ -244,6 +248,7 @@ export function PracticeWorkbench({
   onOpenReview,
   onResumeActivePractice,
   onStartLesson,
+  onStartFluency,
   quickStartSession,
   scope,
   speechVoiceUri,
@@ -262,6 +267,13 @@ export function PracticeWorkbench({
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [itemElapsedSeconds, setItemElapsedSeconds] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
+  const fluencySource = resolveFluencyEntrySource({
+    correctResult: lastResult?.evaluation.outcome === "perfect",
+    corrected: lastGrade === "corrected" || lastResult?.logEntry.phase === "corrective-practice"
+      || Boolean(lastResult?.logEntry.receivedCorrection),
+    answerWasRevealed: answerWasRevealed || Boolean(lastResult?.logEntry.answerWasRevealed),
+    answerIsVisible: isAnswerVisible,
+  });
   const [sessionStats, setSessionStats] = useState<SessionStats>(EMPTY_SESSION_STATS);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
@@ -333,12 +345,15 @@ export function PracticeWorkbench({
             ? { ...scope, mode: "replay" }
             : scope,
           courses: snapshot.courses,
+          learningPaths: snapshot.learningPaths,
           cards: snapshot.cards,
           learningStates: snapshot.sentenceLearningStates,
           reviewStates: snapshot.reviewStates,
           vocabularyEntries: snapshot.vocabularyEntries,
           weakCardIds: new Set(
-            snapshot.progressDashboard.needsAttention.weakCards.map((card) => card.cardId),
+            snapshot.focusedWeakCardIds
+              ?? snapshot.progressDashboard?.needsAttention.weakCards.map((card) => card.cardId)
+              ?? [],
           ),
           now: new Date(),
         })
@@ -389,6 +404,8 @@ export function PracticeWorkbench({
   const isPracticeInteractionLocked =
     isUpdatingStatus
     || isStartingRecallCaptureActive
+    || !checkpointReadyRef.current
+    || latestCheckpointIdentityRef.current !== sessionIdentity
     || Boolean(failedOperation?.locksPractice);
   const activeContext: PracticeContext | null = activeItem?.occurrenceContext
     ? {
@@ -501,6 +518,7 @@ export function PracticeWorkbench({
     setElapsedSeconds(0);
     setItemElapsedSeconds(0);
     setIsPaused(false);
+    setIsUpdatingStatus(false);
     setSessionStats(EMPTY_SESSION_STATS);
     setShortcutNotice(null);
     setCaretOffset(0);
@@ -565,13 +583,36 @@ export function PracticeWorkbench({
 
     async function initializeSession() {
       try {
-        const initialItems: WorkbenchSessionItem[] = quickStartSession
+        let initialItems: WorkbenchSessionItem[] = quickStartSession
           ? buildQuickStartWorkbenchItems(
               quickStartSession,
               currentSession.items,
               new Set(currentSession.blockedCardIds),
             )
           : currentSession.items;
+        if (currentScope.kind === "return") {
+          const saved = await controllerRef.current.getPracticeSessionCheckpoint();
+          const restoredItems = resolveReturnPlanCheckpointItems({
+            checkpoint: saved, scope: currentScope,
+            catalog: { courses: currentSnapshot.courses, cards: currentSnapshot.cards },
+            reviewStates: currentSnapshot.reviewStates, now: new Date(),
+          });
+          if (restoredItems.length) initialItems = restoredItems;
+          else if (initialItems.length === 0 && saved?.scope.kind === "return" && saved.scope.minutes === currentScope.minutes) {
+            if (saved.schemaVersion === 2 && validatePracticeSessionCheckpoint(saved).ok) {
+              await controllerRef.current.commitPracticeSessionTerminal({
+                kind: "terminal", checkpoint: saved,
+                terminal: { kind: "invalidated", reason: saved.catalogFingerprint !== catalogFingerprint(currentScope, {
+                  courses: currentSnapshot.courses, cards: currentSnapshot.cards,
+                }) ? "catalog-mismatch"
+                  : Date.now() - Date.parse(saved.updatedAt) > PRACTICE_SESSION_RESUME_MAX_AGE_MS
+                    ? "stale" : "corrupt" },
+              });
+            } else {
+              await controllerRef.current.deletePracticeSessionCheckpoint();
+            }
+          }
+        }
         if (initialItems.length === 0) {
           setItinerary([]);
           setCheckpointStatus("ready");
@@ -651,9 +692,10 @@ export function PracticeWorkbench({
 
         let checkpoint = opened.checkpoint;
 
-        const durableTurnEntries = (await controllerRef.current.exportFullBackup())
-          .learning.practiceLog
-          .filter((entry) => entry.turnId === checkpoint.turn.turnId);
+        const durableTurnEntries = controllerRef.current.getPracticeTurnEvidence
+          ? await controllerRef.current.getPracticeTurnEvidence(checkpoint.turn.turnId)
+          : (await controllerRef.current.exportFullBackup()).learning.practiceLog
+              .filter((entry) => entry.turnId === checkpoint.turn.turnId);
         if (isCancelled) return;
 
         const restored = restoreWorkbenchPracticeSessionCheckpoint({
@@ -662,6 +704,7 @@ export function PracticeWorkbench({
           items: initialItems,
           catalog: { courses: currentSnapshot.courses, cards: currentSnapshot.cards },
           masteredCardIds,
+          reviewStates: currentSnapshot.reviewStates,
           durableEvidence: practiceLogEntriesToDurableEvidence(durableTurnEntries),
           now: new Date(),
         });
@@ -692,6 +735,7 @@ export function PracticeWorkbench({
 
           latestCheckpointRef.current = checkpoint;
           latestCheckpointSeedRef.current = seed;
+          latestCheckpointIdentityRef.current = sessionIdentity;
           occurrenceIdsRef.current = checkpoint.itinerary.map((occurrence) => occurrence.id);
           setItinerary(initialItems);
           setPracticeTurn(initialTurn);
@@ -1288,7 +1332,7 @@ export function PracticeWorkbench({
         });
         if (result.shouldRequeue && !quickStartReturnIsAlreadyPlanned) {
           const priorReturnCount = returnCounts[activeItem.card.id] ?? 0;
-          const canReturnInRound = priorReturnCount < 2
+          const canReturnInRound = scope?.kind !== "return" && priorReturnCount < 2
             && sessionItems.length - currentIndex - 1 >= 2;
           if (canReturnInRound) {
             setItinerary((items) => {
@@ -1306,7 +1350,9 @@ export function PracticeWorkbench({
               ? { kind: "requeue-cap-reached", cardId: activeItem.card.id }
               : { kind: "requeue-deferred-no-room", cardId: activeItem.card.id });
             setPendingReturnCount((current) => current + 1);
-            setShortcutNotice("Guided recall complete. This sentence will return in the next round.");
+            setShortcutNotice(scope?.kind === "return"
+              ? "Guided recall complete. This bounded plan stays short; the sentence remains available for a later independent check."
+              : "Guided recall complete. This sentence will return in the next round.");
           }
         } else if (resultExplanation) {
           setShortcutNotice(resultExplanation);
@@ -1552,6 +1598,10 @@ export function PracticeWorkbench({
   }, []);
 
   const startRecall = useCallback(async (initialCapture?: InitialRecallCapture) => {
+    const isCurrentSession = () => isMountedRef.current
+      && checkpointReadyRef.current
+      && latestCheckpointIdentityRef.current === sessionIdentity;
+    if (!isCurrentSession()) return;
     if (failedOperation?.kind === "audio-save") {
       void failedOperation.retry();
       return;
@@ -1581,6 +1631,7 @@ export function PracticeWorkbench({
     inputRef.current?.focus({ preventScroll: true });
     try {
       const learningState = await controller.completeFirstExposure(activeItem.card.id);
+      if (!isCurrentSession()) return;
       const nextStandardTurn = activeQuickStartStep?.kind === "first-exposure"
         ? null
         : resolvePracticeTurnForScope({
@@ -1623,6 +1674,7 @@ export function PracticeWorkbench({
           });
         },
       );
+      if (!isCurrentSession()) return;
       if (activeQuickStartStep?.kind === "first-exposure") {
         const nextOccurrence = latestCheckpointRef.current?.itinerary[currentIndex + 1];
         if (nextOccurrence) {
@@ -1648,6 +1700,7 @@ export function PracticeWorkbench({
       setShortcutNotice("First exposure complete. Rebuild the sentence in the word track; use Answer only if you need support.");
       finishStartingRecallCapture();
     } catch (caught) {
+      if (!isCurrentSession()) return;
       setFailedOperation({
         kind: "operation",
         label: "Retry starting recall",
@@ -1657,7 +1710,7 @@ export function PracticeWorkbench({
       });
       pauseStartingRecallCapture();
     } finally {
-      setIsUpdatingStatus(false);
+      if (isCurrentSession()) setIsUpdatingStatus(false);
     }
   }, [
     activeItem,
@@ -1675,6 +1728,7 @@ export function PracticeWorkbench({
     pauseStartingRecallCapture,
     practiceTurn,
     selectionEndOffset,
+    sessionIdentity,
     scope,
   ]);
 
@@ -2881,6 +2935,8 @@ export function PracticeWorkbench({
         ? "Vocabulary is empty"
         : scope.kind === "course"
           ? "Course replay complete"
+          : scope.kind === "return"
+            ? "Return plan complete"
           : scope.kind === "focused"
             ? "Focused Practice unavailable"
             : "Lesson complete";
@@ -2898,6 +2954,8 @@ export function PracticeWorkbench({
               ? "Save a sentence with Control N, then practice it here."
               : scope.kind === "course"
                 ? "Every available sentence in this course replay has been completed or mastered."
+                : scope.kind === "return"
+                  ? "No eligible sentences remain for this budget. Your other due dates are unchanged; choose a longer plan for new learning or browse courses."
                 : scope.kind === "focused"
                   ? "This sentence is no longer eligible for Focused Practice. Return to Progress for the current weak-card list."
                   : "Every sentence in this lesson has a First Pass."}
@@ -2943,11 +3001,20 @@ export function PracticeWorkbench({
     <>
       <section
         className={`practice-layout practice-layout-stage ${
-          checkpointRecovery || session.blockedCardIds.length > 0 || activeQuickStartStep
+          checkpointRecovery || session.blockedCardIds.length > 0 || activeQuickStartStep || scope.kind === "return"
             ? "is-flowing"
             : ""
         }`}
       >
+      {scope.kind === "return" && (
+        <div className="practice-checkpoint-recovery" role="note" aria-label="Bounded return plan">
+          <div>
+            <strong>{sessionItems.length} sentence{sessionItems.length === 1 ? "" : "s"} · {scope.minutes}-minute intention</strong>
+            <span>{activeItem.explanation}</span>
+            <span>Actual duration depends on your pace. Unpracticed due dates stay unchanged.</span>
+          </div>
+        </div>
+      )}
       {checkpointRecovery && (
         <div className="practice-checkpoint-recovery" role="status">
           <div>
@@ -3030,6 +3097,8 @@ export function PracticeWorkbench({
         onInputSelect={handleInputSelect}
         onMarkMastered={() => runShortcut({ type: "mark-mastered" })}
         onNext={() => runShortcut({ type: "next" })}
+        onStartFluency={onStartFluency && fluencySource && scope.kind !== "return"
+          ? () => onStartFluency(activeItem.card, fluencySource) : undefined}
         onPause={() => runShortcut({ type: "toggle-pause" })}
         onPlayAudio={() => runShortcut({ type: "play-audio" })}
         onPrevious={() => runShortcut({ type: "previous" })}
@@ -3248,6 +3317,7 @@ interface SentenceGameBoardProps {
   onInputSelect(selectionStart: number, selectionEnd: number): void;
   onMarkMastered(): void;
   onNext(): void;
+  onStartFluency?(): void;
   onPause(): void;
   onPlayAudio(): void;
   onPrevious(): void;
@@ -3306,6 +3376,7 @@ function SentenceGameBoard({
   onInputSelect,
   onMarkMastered,
   onNext,
+  onStartFluency,
   onPause,
   onPlayAudio,
   onPrevious,
@@ -3567,10 +3638,14 @@ function SentenceGameBoard({
                   </strong>
                 )}
                 <span>
-                  {visibleShortcutNotice ?? `${lastResult?.evaluation.message ?? ""} ${accuracy}% aligned.`}
+                  {visibleShortcutNotice ?? (lastResult
+                    ? `${lastResult.evaluation.message} ${accuracy}% aligned.`
+                    : "The answer is visible. Typing practice is optional.")}
                 </span>
               </div>
             )}
+            {onStartFluency && <button className="secondary-button practice-fluency-entry" type="button"
+              disabled={isPaused || isSubmitting || isUpdatingStatus} onClick={onStartFluency}>Optional Fluency Pass</button>}
           </div>
 
           <div className="word-track">
@@ -3647,6 +3722,16 @@ function SentenceGameBoard({
       />
     </div>
   );
+}
+
+export function resolveFluencyEntrySource(input: {
+  correctResult: boolean;
+  corrected: boolean;
+  answerWasRevealed: boolean;
+  answerIsVisible: boolean;
+}): "correct" | "corrected" | "revealed" | null {
+  if (input.correctResult) return input.corrected ? "corrected" : input.answerWasRevealed ? "revealed" : "correct";
+  return input.answerWasRevealed && input.answerIsVisible ? "revealed" : null;
 }
 
 interface ShortcutBarProps {
@@ -3987,6 +4072,7 @@ function checkpointFromWorkbenchSeed(
     startedAt: active.startedAt,
     engagedAt: active.engagedAt,
     revision: active.revision,
+    ...(active.dataGeneration === undefined ? {} : { dataGeneration: active.dataGeneration }),
     round: mergePracticeRoundSummary(active.round, seed.round),
     updatedAt: active.updatedAt,
   };
@@ -4075,6 +4161,8 @@ function practiceScopeKey(scope: PracticeScope | null): string {
   }
 
   switch (scope.kind) {
+    case "return":
+      return `return:${scope.minutes}`;
     case "lesson":
       return `${scope.kind}:${scope.courseId}:${scope.lessonId}:${scope.mode}`;
     case "review":
@@ -4090,6 +4178,8 @@ function practiceScopeKey(scope: PracticeScope | null): string {
 
 function labelForScope(scope: PracticeScope): string {
   switch (scope.kind) {
+    case "return":
+      return `${scope.minutes}-minute Return plan`;
     case "lesson":
       return scope.mode === "replay" ? "Replay" : "Lesson";
     case "review":
@@ -4286,6 +4376,9 @@ function sessionCompletionDescription(
   stats: SessionStats,
   pendingReturnCount: number,
 ): string {
+  if (scope.kind === "return") {
+    return "Your bounded plan is complete. Only practiced Review results changed scheduling; other due dates stay unchanged. Any unfinished acquisition remains available for a later independent check.";
+  }
   if (pendingReturnCount > 0) {
     return `${pendingReturnCount} sentence${pendingReturnCount === 1 ? "" : "s"} still need an independent return in the next round.`;
   }

@@ -14,6 +14,8 @@ A `LearningPath` recommends what to study next across independently accessible `
 
 The first Web version stores all learning data in the browser with IndexedDB, so it can be hosted as a static site on GitHub Pages.
 
+Learning Studio offers optional multi-context recall, five authored Sentence Families, three short task rehearsals, a confirmed personal sentence inbox, cross-sentence contrast practice and visible-target Fluency Passes. Its transfer, personal and typing evidence stays separate from Course retention. Bounded 3/8/15-minute Return Plans use the ordinary learning and Review rules. These capabilities are governed by the [Learning Expansion specification](./docs/superpowers/specs/2026-10-22-learning-expansion-design.md); real-user learning-effect validation remains open.
+
 ## Architecture
 
 The codebase uses a small DDD-style frontend architecture:
@@ -42,6 +44,10 @@ npm test
 npm run build
 ```
 
+Audit all default course content with `npm run audit:content`. The opt-in long-history baseline is available through `npm run test:performance`; its [report](./docs/testing/2026-10-22-long-history-performance.md) distinguishes adapter measurements from browser interaction timing.
+
 ## GitHub Pages
 
 The workflow in `.github/workflows/pages.yml` builds the Vite app and deploys `dist` to GitHub Pages on pushes to `main`.
+
+Engineering coverage and measurement limits: [Learning Expansion Acceptance](docs/testing/2026-10-23-learning-expansion-acceptance.md).

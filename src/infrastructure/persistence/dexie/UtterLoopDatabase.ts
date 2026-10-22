@@ -13,6 +13,7 @@ import type { AppPreferences } from "../../../domain/backup/UtterLoopFullBackup"
 import type { PracticeSessionCheckpoint } from "../../../application/practice-session/PracticeSessionCheckpoint";
 import type { RevisionedPracticeSessionCheckpoint } from "../../../application/ports/PracticeSessionStore";
 import type { PracticeSessionEvidence } from "../../../domain/practice/PracticeSessionEvidence";
+import type { LearningStudioDocument, StudioCheckpoint } from "../../../domain/studio/LearningStudio";
 import {
   migrateLegacyV3Data,
   type LegacyPracticeLogRow,
@@ -35,6 +36,7 @@ export class UtterLoopDatabase extends Dexie {
     "active"
   >;
   practiceSessionEvidence!: Table<PracticeSessionEvidence, string>;
+  learningStudio!: Table<LearningStudioDocument | LearningStudioStateRecord, "local" | "state">;
 
   constructor(
     name = "utterloop-courses",
@@ -128,6 +130,8 @@ export class UtterLoopDatabase extends Dexie {
       await transaction.table("appMetadata").put(measurementMetadata(now()));
     });
 
+    this.version(7).stores({ learningStudio: "id" });
+
     this.on("populate", (transaction) => (
       transaction.table("appMetadata").put(measurementMetadata(now()))
     ));
@@ -137,6 +141,17 @@ export class UtterLoopDatabase extends Dexie {
 export interface AppMetadata {
   id: "device";
   measurementEpoch: string;
+  dataGeneration?: number;
+  practiceOwnershipEpoch?: number;
+  practiceLease?: { ownerId: string; token: string; expiresAt: number };
+}
+
+/** A small CAS/checkpoint row keeps autosaves independent of durable history size. */
+export interface LearningStudioStateRecord {
+  id: "state";
+  revision: number;
+  contentRevision: number;
+  checkpoint: StudioCheckpoint | null;
 }
 
 function measurementMetadata(now: Date): AppMetadata {

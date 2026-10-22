@@ -15,6 +15,33 @@ import type { PracticeSessionCheckpoint } from "./PracticeSessionCheckpoint";
 import type { PracticeSessionCheckpointV1 } from "./PracticeSessionCheckpoint";
 
 describe("PracticeSessionLifecycle.open", () => {
+  it("converges simultaneous opens onto one compatible active session", async () => {
+    const store = new MemoryPracticeSessionStore();
+    let nextId = 0;
+    const lifecycle = new PracticeSessionLifecycle(store, {
+      now: () => new Date("2026-08-01T08:00:00.000Z"), createId: (kind) => `${kind}-${nextId++}`,
+    });
+    const [first, second] = await Promise.all([
+      lifecycle.open({ checkpoint: checkpointSeed(), entryPoint: "standard" }),
+      lifecycle.open({ checkpoint: checkpointSeed(), entryPoint: "standard" }),
+    ]);
+    expect([first.status, second.status].sort()).toEqual(["opened", "resumed"]);
+    expect(first.checkpoint.sessionId).toBe(second.checkpoint.sessionId);
+    expect(store.activeCheckpoint).toEqual(first.checkpoint);
+  });
+  it("resumes and completes a bounded Return session with its scheduled Review evidence intact", async () => {
+    const store = new MemoryPracticeSessionStore();
+    const lifecycle = new PracticeSessionLifecycle(store, { now: () => new Date("2026-08-01T08:00:00.000Z"), createId: (kind) => `${kind}-return` });
+    const seed = { ...checkpointSeed(), scope: { kind: "return", minutes: 8 } as const, scopeKey: "return:8" };
+    const opened = await lifecycle.open({ checkpoint: seed, entryPoint: "standard" });
+    const resumed = await lifecycle.open({ checkpoint: seed, entryPoint: "standard" });
+    expect(resumed.status).toBe("resumed");
+    expect(resumed.contextByOccurrenceId["occurrence-1"].queueReason).toBe("due-review");
+    const saved = await lifecycle.commit({ kind: "checkpoint", checkpoint: opened.checkpoint, engagement: "submission", roundEvents: [{ kind: "attempted", occurrenceId: "occurrence-1" }, { kind: "completed", occurrenceId: "occurrence-1" }] });
+    await lifecycle.commit({ kind: "terminal", checkpoint: saved.checkpoint, terminal: { kind: "completed", reason: "scope-complete" } });
+    expect(store.evidence.get("session-return")).toMatchObject({ scope: { kind: "return", minutes: 8 }, round: { dueReviewScheduledOccurrenceIds: ["occurrence-1"], dueReviewCompletedOccurrenceIds: ["occurrence-1"], remainingOccurrenceIds: [] } });
+    expect(store.activeCheckpoint).toBeUndefined();
+  });
   it("opens a new revisioned session with stable identities and occurrence context", async () => {
     const store = new MemoryPracticeSessionStore();
     const lifecycle = new PracticeSessionLifecycle(store, {
@@ -710,6 +737,7 @@ class MemoryPracticeSessionStore implements PracticeSessionStore {
     return existed;
   }
   async commitCheckpoint(checkpoint: RevisionedPracticeSessionCheckpoint): Promise<PracticeSessionCheckpointCommitResult> {
+    if (this.activeCheckpoint?.schemaVersion === 2 && this.activeCheckpoint.sessionId !== checkpoint.sessionId) return "conflict";
     if (this.evidence.has(checkpoint.sessionId)) return "terminal";
     if (this.activeCheckpoint?.schemaVersion === 2
       && this.activeCheckpoint.sessionId === checkpoint.sessionId) {

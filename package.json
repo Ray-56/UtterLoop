@@ -10,6 +10,8 @@
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "test": "vitest run",
+    "audit:content": "node scripts/content-audit.mjs --check",
+    "test:performance": "UTTERLOOP_PERFORMANCE=1 vitest run scripts/performance.test.ts --reporter verbose",
     "test:e2e": "playwright test",
     "test:e2e:preview": "playwright test --config playwright.preview.config.ts",
     "test:e2e:ci": "npm run test:e2e && npm run test:e2e:preview"

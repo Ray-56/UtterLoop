@@ -59,6 +59,7 @@ describe("FullBackupControls", () => {
         reviewStates: 4,
         practiceLogEntries: 5,
         vocabularyEntries: 1,
+        personalSentences: 0, studioAttempts: 0, fluencyResults: 0,
       },
     });
   });
@@ -76,6 +77,7 @@ describe("FullBackupControls", () => {
             reviewStates: 4,
             practiceLogEntries: 5,
             vocabularyEntries: 1,
+        personalSentences: 0, studioAttempts: 0, fluencyResults: 0,
           },
         }}
       />,
@@ -133,6 +135,7 @@ describe("FullBackupControls", () => {
               reviewStates: 4,
               practiceLogEntries: 5,
               vocabularyEntries: 1,
+        personalSentences: 0, studioAttempts: 0, fluencyResults: 0,
             },
           },
         }}
@@ -162,6 +165,7 @@ describe("FullBackupControls", () => {
           reviewStates: 4,
           practiceLogEntries: 5,
           vocabularyEntries: 1,
+        personalSentences: 0, studioAttempts: 0, fluencyResults: 0,
         },
       },
     };

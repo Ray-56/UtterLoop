@@ -29,6 +29,9 @@ const courses: Course[] = [{
 }];
 
 describe("route availability", () => {
+  it("keeps a bounded Return route available even when its plan is empty", () => {
+    expect(resolvePracticeRoute({ kind: "return", minutes: 3 }, { courses: [], cardIds: new Set() })).toEqual({ kind: "available" });
+  });
   it("accepts exact lesson, course, review, and vocabulary references", () => {
     const catalog = { courses, cardIds: new Set(["card-1"]) };
 

@@ -10,7 +10,8 @@ export type PracticeSessionEvidenceScope =
   | { kind: "review"; courseId?: string }
   | { kind: "vocabulary"; cardId?: SentenceCardId; courseId?: string }
   | { kind: "course"; courseId: string }
-  | { kind: "focused"; cardId: SentenceCardId };
+  | { kind: "focused"; cardId: SentenceCardId }
+  | { kind: "return"; minutes: 3 | 8 | 15 };
 
 export type PracticeSessionTerminal =
   | { kind: "completed"; reason: "scope-complete" | "round-complete" | "quick-start-complete" }

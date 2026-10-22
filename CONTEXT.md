@@ -153,3 +153,39 @@ _Avoid_: Account creation date, first practice date
 **Mastery Stage**:
 A compact level representing how far a SentenceCard has moved through spaced review.
 _Avoid_: Level, rank
+
+**Learning Studio**:
+Optional practice for retrieving acquired expressions from new situations, composing taught variants, rehearsing tasks, practising personal sentences, and improving visible-target typing. Each activity retains evidence appropriate to its own outcome.
+_Avoid_: Course, AI tutor, general learning platform
+
+**Context Cue**:
+A situation that asks the learner to retrieve a particular acquired expression. Different Context Cues may lead to the same Target Sentence without displaying it.
+_Avoid_: Answer hint, literal translation requirement
+
+**Sentence Family**:
+An authored group of expressions sharing a reusable structure, with instructional variants and separate test variants.
+_Avoid_: Automatically generated Course, unrestricted grammar exercise
+
+**Transfer Check**:
+A check using a test cue or variant excluded from that activity's instructional examples. First encounters, assistance and repeated attempts remain distinguishable; success describes that check rather than spontaneous language ability.
+_Avoid_: Independent First Pass, scheduled Review, fluency score
+
+**Rehearsal Task**:
+An authored sequence of contextual expression steps for preparing a concrete real-life interaction, such as requesting an extension or obtaining hotel help.
+_Avoid_: Free conversation, AI role-play
+
+**Personal Sentence**:
+A learner-confirmed expression and its scenario, source, acquisition and spaced-review state in the personal inbox. Personal practice remains distinguishable from Course learning and its strict retention evidence.
+_Avoid_: Vocabulary Entry, unchecked generated answer
+
+**Return Plan**:
+A bounded Practice Round chosen for an approximate time budget, with explainable due, weak and new-learning selections. Its scheduled Review occurrences retain ordinary Review meaning while other occurrences retain their own learning phases.
+_Avoid_: Review reset, guaranteed duration, debt forgiveness
+
+**Observed Language Pattern**:
+A recurring, narrowly defined response pattern across different sentences that can suggest authored contrast practice. It describes recorded responses and does not establish whether a mistake came from typing or language knowledge.
+_Avoid_: Diagnosis, composite weakness score
+
+**Fluency Pass**:
+An optional visible-target typing activity following permitted target exposure, with timing beginning at the first committed character. Its typing speed, final character accuracy, editing and rhythm evidence remain separate from sentence recall.
+_Avoid_: Recall speed, speaking fluency, real-finger accuracy

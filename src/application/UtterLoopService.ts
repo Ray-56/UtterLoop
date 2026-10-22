@@ -5,7 +5,7 @@ import type { LearningStatus } from "../domain/review/ReviewState";
 import type { TrainingRepository } from "./ports/TrainingRepository";
 import { defaultCatalog } from "./seed/defaultCatalog";
 import { ensureDefaultCatalog } from "./seed/ensureDefaultCatalog";
-import { getTrainingSnapshot } from "./use-cases/getTrainingSnapshot";
+import { getPracticeSnapshot, getTrainingSnapshot } from "./use-cases/getTrainingSnapshot";
 import { previewPracticeAttempt } from "./use-cases/previewPracticeAttempt";
 import { setReviewLearningStatus } from "./use-cases/setReviewLearningStatus";
 import { submitPracticeAttempt } from "./use-cases/submitPracticeAttempt";
@@ -34,6 +34,10 @@ export class UtterLoopService {
 
   ensureDefaultCatalog() {
     return ensureDefaultCatalog(this.repository);
+  }
+
+  getPracticeSnapshot(now = new Date()) {
+    return getPracticeSnapshot(this.repository, now);
   }
 
   getSnapshot(now = new Date()) {

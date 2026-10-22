@@ -18,7 +18,7 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      testMatch: /(?:app|interaction)\.spec\.ts/,
+      testMatch: /(?:app|interaction|safety|return|content|studio|studio-recovery|studio-layout|fluency)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"] },
     },
     {

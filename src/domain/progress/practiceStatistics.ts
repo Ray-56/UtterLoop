@@ -127,12 +127,32 @@ export function reducePracticeStatistics(
   state: PracticeStatisticsState,
   log: ProgressPracticeLogEntry,
 ): PracticeStatisticsState {
+  const next = cloneState(state);
+  accumulatePracticeStatistics(next, log);
+  return next;
+}
+
+export function summarizePracticeStatistics(
+  logs: Iterable<ProgressPracticeLogEntry>,
+  now: Date,
+  days = 14,
+  timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone,
+): PracticeStatistics {
+  const state = createPracticeStatisticsState(now, timeZone);
+  for (const log of logs) accumulatePracticeStatistics(state, log);
+  return finalizePracticeStatistics(state, days);
+}
+
+function accumulatePracticeStatistics(
+  state: PracticeStatisticsState,
+  log: ProgressPracticeLogEntry,
+): void {
   const submittedAt = new Date(log.submittedAt);
   if (Number.isNaN(submittedAt.getTime())) {
     throw new Error(`PracticeLog ${log.id} has an invalid submittedAt value.`);
   }
 
-  const next = cloneState(state);
+  const next = state;
   next.allTime.totalEvents += 1;
   const normalizedKind = kindOf(log);
 
@@ -140,7 +160,7 @@ export function reducePracticeStatistics(
     const signals = signalKindsOf(log);
     if (signals.includes("revealed")) next.allTime.revealCount += 1;
     if (signals.includes("skipped")) next.allTime.skipCount += 1;
-    return next;
+    return;
   }
 
   next.allTime.practiceActivityAttempts += 1;
@@ -148,14 +168,14 @@ export function reducePracticeStatistics(
   day.practiceAttempts += 1;
 
   if (log.phase === "voluntary-practice") {
-    return next;
+    return;
   }
 
   next.allTime.submissions += 1;
   day.nonVoluntaryAttempts += 1;
   if (!isRetrievalCheck(log)) {
     if (isCorrectionCompleted(log)) next.allTime.correctionsCompleted += 1;
-    return next;
+    return;
   }
 
   const outcome = attemptOutcomeOf(log);
@@ -184,7 +204,7 @@ export function reducePracticeStatistics(
     card.mostRecentCheckAt = submittedAt.toISOString();
     card.mostRecentOutcome = outcome;
   }
-  return next;
+
 }
 
 export function finalizePracticeStatistics(

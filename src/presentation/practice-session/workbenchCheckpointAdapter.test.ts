@@ -10,9 +10,26 @@ import {
   createWorkbenchPracticeSessionCheckpointSeed,
   practiceLogEntriesToDurableEvidence,
   restoreWorkbenchPracticeSessionCheckpoint,
+  resolveReturnPlanCheckpointItems,
 } from "./workbenchCheckpointAdapter";
 
 describe("createWorkbenchPracticeSessionCheckpoint", () => {
+  it("recovers the frozen Return itinerary when fresh due selection has changed", () => {
+    const returnScope = { kind: "return", minutes: 8 } as const;
+    const items = sessionItems().map((item) => ({ ...item, initialPhase: "review-recall" as const, queueReason: "due-review" as const, scheduledReviewDueAt: "2026-07-31T07:00:00.000Z" }));
+    const seed = createWorkbenchPracticeSessionCheckpointSeed({ scope: returnScope, items, currentIndex: 1, draft: "saved draft", selectionStart: 2, selectionEnd: 4, practiceTurn: createPracticeTurn("turn-current", "card-2", "review-recall"), submissionIndex: 0, elapsedSeconds: 22, itemElapsedSeconds: 3, stats: workbenchStats(), returnCounts: {}, pendingReturnCount: 0, catalog: catalog(), updatedAt: "2026-07-31T08:00:00.000Z" });
+    const checkpoint = { ...seed, schemaVersion: 2, sessionId: "session-return", roundId: "round-return", entryPoint: "standard", startedAt: "2026-07-31T08:00:00.000Z", engagedAt: "2026-07-31T08:00:01.000Z", revision: 1, updatedAt: "2026-07-31T08:01:00.000Z" };
+    expect(validatePracticeSessionCheckpoint({ ...checkpoint, scope: { kind: "return", minutes: 5 } }).ok).toBe(false);
+    expect(resolveReturnPlanCheckpointItems({ checkpoint, scope: returnScope, catalog: catalog(), reviewStates: [], now: new Date("2026-10-22T00:00:00.000Z") })).toEqual([]);
+    const restored = restoreWorkbenchPracticeSessionCheckpoint({ checkpoint, scope: returnScope, items: [], catalog: catalog(), reviewStates: items.map((item) => ({ ...item.reviewState, dueAt: "2026-08-02T08:00:00.000Z" })), masteredCardIds: [], durableEvidence: [], now: new Date("2026-07-31T08:05:00.000Z") });
+    expect(restored.status).toBe("resume");
+    if (restored.status === "resume") {
+      expect(restored.viewState.itinerary.map((item) => item.card.id)).toEqual(items.map((item) => item.card.id));
+      expect(restored.viewState.itinerary[1]).toMatchObject({ initialPhase: "review-recall", queueReason: "due-review", scheduledReviewDueAt: "2026-07-31T07:00:00.000Z" });
+      expect(restored.viewState.draft).toBe("saved draft");
+      expect(restored.viewState.currentIndex).toBe(1);
+    }
+  });
   it("creates a v2 lifecycle seed with queue context and target-free round identity sets", () => {
     const items = sessionItems();
     items[0] = {

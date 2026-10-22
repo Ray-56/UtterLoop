@@ -1,5 +1,6 @@
 import type { QuickStartPreference } from "../../domain/backup/UtterLoopFullBackup";
 import type { PracticeSessionEvidence } from "../../domain/practice/PracticeSessionEvidence";
+import type { LocalDataAccess } from "./LocalDataAccess";
 import type {
   PracticeSessionCheckpoint,
   PracticeSessionCheckpointV2,
@@ -17,16 +18,18 @@ export type PracticeSessionCheckpointCommitResult =
   | "stored"
   | "unchanged"
   | "stale"
+  | "conflict"
   | "terminal";
 
 export interface PracticeSessionTerminalCommit {
   evidence: PracticeSessionEvidence;
   quickStartPreference?: QuickStartPreference;
+  dataGeneration?: number;
 }
 
 export type PracticeSessionTerminalCommitResult = "created" | "existing" | "conflict";
 
-export interface PracticeSessionStore {
+export interface PracticeSessionStore extends Partial<LocalDataAccess> {
   loadActiveCheckpoint(): Promise<PracticeSessionCheckpoint | undefined>;
   discardActiveCheckpoint(expectedSessionId?: string): Promise<boolean>;
   commitCheckpoint(

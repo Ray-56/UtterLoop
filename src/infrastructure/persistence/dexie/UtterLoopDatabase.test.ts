@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { utterLoopDatabase } from "./UtterLoopDatabase";
 
 describe("UtterLoopDatabase schema", () => {
-  it("layers schema version 6 after guided learning and adds target-free session evidence", () => {
-    expect(utterLoopDatabase.verno).toBe(6);
+  it("preserves guided learning and adds independent Studio storage in schema version 7", () => {
+    expect(utterLoopDatabase.verno).toBe(7);
     expect(utterLoopDatabase.tables.map((table) => table.name)).toContain("courseCategories");
     expect(utterLoopDatabase.tables.map((table) => table.name)).toContain("vocabularyEntries");
     expect(utterLoopDatabase.tables.map((table) => table.name)).toContain("sentenceLearningStates");
@@ -11,6 +11,7 @@ describe("UtterLoopDatabase schema", () => {
     expect(utterLoopDatabase.tables.map((table) => table.name)).toContain("practiceSessionCheckpoints");
     expect(utterLoopDatabase.tables.map((table) => table.name)).toContain("practiceSessionEvidence");
     expect(utterLoopDatabase.tables.map((table) => table.name)).toContain("appMetadata");
+    expect(utterLoopDatabase.table("learningStudio").schema.primKey.name).toBe("id");
 
     const categorySchema = utterLoopDatabase.table("courseCategories").schema;
     const courseSchema = utterLoopDatabase.table("courses").schema;

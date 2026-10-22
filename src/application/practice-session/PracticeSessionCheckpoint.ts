@@ -21,7 +21,8 @@ export type PracticeSessionScope =
   | { kind: "review"; courseId?: string }
   | { kind: "vocabulary"; cardId?: string; courseId?: string }
   | { kind: "course"; courseId: string }
-  | { kind: "focused"; cardId: string };
+  | { kind: "focused"; cardId: string }
+  | { kind: "return"; minutes: 3 | 8 | 15 };
 
 export interface PracticeTurnCheckpoint {
   turnId: string;
@@ -98,6 +99,7 @@ export interface PracticeSessionCheckpointV1 extends PracticeSessionCheckpointBa
 
 export interface PracticeSessionCheckpointV2 extends PracticeSessionCheckpointBase {
   schemaVersion: 2;
+  dataGeneration?: number;
   sessionId: string;
   roundId: string;
   entryPoint: PracticeSessionEntryPoint;

@@ -785,6 +785,10 @@ test("Quick Start restores its step, sentence, and draft, then wins root routing
   await expect(page.getByLabel("Quick Start, step 1 of 6")).toBeVisible();
   await expect(page.getByLabel("First exposure")).toBeVisible();
   await page.getByLabel("Type the target sentence").press("Enter");
+  // First exposure commits asynchronously. The next step appears only after its
+  // lifecycle transaction finishes; reload the completed transition, not an
+  // in-flight key handler.
+  await expect(page.getByLabel("Quick Start, step 2 of 6")).toBeVisible();
 
   await page.reload();
   await expectAppReady(page);
@@ -986,4 +990,35 @@ test("Start over asks before discarding a Practice draft", async ({ page }) => {
     "Practice restarted from the first sentence.",
     { exact: true },
   )).toBeVisible();
+});
+
+test("deferred Progress read failure offers retry and force refresh reads new history", async ({ page }) => {
+  await openReadyApp(page, "/?view=settings");
+  await page.evaluate(() => {
+    const nativeGetAll = IDBIndex.prototype.getAll;
+    IDBIndex.prototype.getAll = function (...parameters: Parameters<typeof nativeGetAll>) {
+      if (this.objectStore.name === "practiceLog") {
+        IDBIndex.prototype.getAll = nativeGetAll;
+        throw new DOMException("Injected local history read failure", "UnknownError");
+      }
+      return nativeGetAll.apply(this, parameters);
+    };
+  });
+  await page.getByRole("button", { name: "Progress", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Learning evidence could not be loaded", exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Recall outcomes", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Retry learning evidence", exact: true }).click();
+  const outcomes = page.getByRole("region", { name: "Recall outcomes", exact: true });
+  await expect(outcomes).toBeVisible();
+  await expect(outcomes.getByText("Retrieval checks", { exact: true }).locator("..")).toContainText("0");
+  await seedUtterLoopIndexedDb(page, { practiceLog: [{
+    kind: "attempt", id: "analytics-refresh-attempt", turnId: "analytics-refresh-turn", cardId: "sf-001",
+    phase: "independent-recall", submissionIndex: 0, submittedAt: new Date().toISOString(),
+    answer: "Hello, my name is Emma.", outcome: "perfect", accuracy: 1,
+    answerWasRevealed: false, hadEdits: false, audioPlayCount: 0, durationMs: 1000,
+    supportLevelUsed: 0, supportKindsUsed: [], receivedCorrection: false,
+  }] });
+  await page.getByRole("button", { name: "Refresh learning evidence", exact: true }).click();
+  await expect(outcomes.getByText("Retrieval checks", { exact: true }).locator("..")).toContainText("1");
+  await expect(outcomes.getByText("Perfect recalls", { exact: true }).locator("..")).toContainText("1");
 });

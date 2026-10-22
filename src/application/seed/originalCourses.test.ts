@@ -134,6 +134,36 @@ describe("original course seed content", () => {
     expect(tokenCount).toBe(122);
   });
 
+  it("teaches all Work & Study cards with safe, aligned learning support", () => {
+    const course = originalCourses.find((item) => item.id === "work-study-essentials");
+    const cards = originalCourseCards.filter((card) => card.id.startsWith("wse-"));
+
+    expect(course?.revision).toBe(3);
+    expect(cards).toHaveLength(20);
+    for (const card of cards) {
+      const support = card.learningSupport;
+      expect(support, `${card.id} support`).toBeDefined();
+      expect(card.updatedAt).toBe("2026-10-22T00:00:00.000Z");
+      expect(support?.context).toMatch(/[\u4e00-\u9fff]/);
+      expect(support?.grammar.points.length).toBeGreaterThan(0);
+      expect(normalizeWritten(support?.pronunciation.chunks.map((chunk) => chunk.text).join(" ") ?? ""))
+        .toBe(normalizeWritten(card.english));
+      expect(normalizeWritten(support?.grammar.chunks.flatMap((chunk) => chunk.tokens ?? []).map((token) => token.text).join(" ") ?? ""))
+        .toBe(normalizeWritten(card.english));
+      for (const token of support?.grammar.chunks.flatMap((chunk) => chunk.tokens ?? []) ?? []) {
+        expect(token.gloss).toMatch(/[\u4e00-\u9fff]/);
+        expect(token.partOfSpeech).toMatch(/[\u4e00-\u9fff]/);
+        expect(token.ipa).toMatch(/^\/\S+\/$/);
+      }
+    }
+  });
+
+  it("accepts both established data agreements and states an inclusive noon deadline", () => {
+    expect(originalCourseCards.find((card) => card.id === "wse-002")?.acceptableAnswers)
+      .toContain("The data are ready for review.");
+    expect(originalCourseCards.find((card) => card.id === "wse-005")?.prompt).toContain("最晚到中午");
+  });
+
   it("forms a valid course catalog", () => {
     expect(() =>
       validateCourseCatalog({

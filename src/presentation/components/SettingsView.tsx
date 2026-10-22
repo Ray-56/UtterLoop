@@ -353,6 +353,7 @@ export function SettingsView({ controller, personalization }: SettingsViewProps)
   const [backupExportError, setBackupExportError] = useState<string | null>(null);
   const [backupMessage, setBackupMessage] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<DestructiveSettingsAction | null>(null);
+  const [needsReload, setNeedsReload] = useState(false);
   const pendingActionRef = useRef<SettingsAction | null>(null);
   const snapshot = controller.snapshot;
 
@@ -467,6 +468,7 @@ export function SettingsView({ controller, personalization }: SettingsViewProps)
       );
       if (didReset) {
         setConfirmation(null);
+        setNeedsReload(true);
       }
       return;
     }
@@ -475,10 +477,11 @@ export function SettingsView({ controller, personalization }: SettingsViewProps)
       const didClear = await runAction(
         "clear",
         controller.clearAll,
-        "This device was cleared and default courses were reinstalled.",
+        "This device was cleared. Reload to install default courses.",
       );
       if (didClear) {
         setConfirmation(null);
+        setNeedsReload(true);
       }
     }
   }
@@ -493,6 +496,15 @@ export function SettingsView({ controller, personalization }: SettingsViewProps)
     const reader = new FileReader();
     reader.onload = () => setImportText(String(reader.result ?? ""));
     reader.readAsText(file);
+  }
+
+  if (needsReload) {
+    return <section className="center-panel" aria-live="polite">
+      <h3>Local learning data updated</h3>
+      <p>{backupMessage ?? message}</p>
+      <p>Reload to continue with the updated data.</p>
+      <button className="primary-button" onClick={() => window.location.reload()} type="button">Reload updated data</button>
+    </section>;
   }
 
   return (
@@ -564,6 +576,7 @@ export function SettingsView({ controller, personalization }: SettingsViewProps)
             setBackupMessage(
               `Restored ${summary.counts.courses} courses, ${summary.counts.cards} cards, and ${summary.counts.practiceLogEntries} learning events.`,
             );
+            setNeedsReload(true);
           }}
           validate={validateFullBackup}
         />

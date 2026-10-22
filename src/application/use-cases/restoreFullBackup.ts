@@ -1,6 +1,6 @@
 import type {
   UtterLoopFullBackup,
-  UtterLoopFullBackupV2,
+  UtterLoopFullBackupV3,
 } from "../../domain/backup/UtterLoopFullBackup";
 import { validateFullBackup } from "../../domain/backup/validateFullBackup";
 import type { TrainingRepository } from "../ports/TrainingRepository";
@@ -14,6 +14,9 @@ export interface FullBackupSummary {
     reviewStates: number;
     practiceLogEntries: number;
     vocabularyEntries: number;
+    personalSentences: number;
+    studioAttempts: number;
+    fluencyResults: number;
   };
 }
 
@@ -28,7 +31,7 @@ export async function restoreFullBackup(
 }
 
 export function summarizeFullBackup(
-  backup: UtterLoopFullBackup | UtterLoopFullBackupV2,
+  backup: UtterLoopFullBackup | UtterLoopFullBackupV3,
 ): FullBackupSummary {
   return {
     exportedAt: backup.exportedAt,
@@ -39,6 +42,9 @@ export function summarizeFullBackup(
       reviewStates: backup.learning.reviewStates.length,
       practiceLogEntries: backup.learning.practiceLog.length,
       vocabularyEntries: backup.learning.vocabularyEntries.length,
+      personalSentences: backup.schemaVersion === 3 ? backup.learning.studio.personalSentences.length : 0,
+      studioAttempts: backup.schemaVersion === 3 ? backup.learning.studio.attempts.length : 0,
+      fluencyResults: backup.schemaVersion === 3 ? backup.learning.studio.fluencyResults.length : 0,
     },
   };
 }

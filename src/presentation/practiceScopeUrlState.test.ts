@@ -14,6 +14,9 @@ describe("practice scope URL state", () => {
       { kind: "vocabulary" },
       { kind: "course", courseId: "course-2" },
       { kind: "focused", cardId: "card-1" },
+      { kind: "return", minutes: 3 },
+      { kind: "return", minutes: 8 },
+      { kind: "return", minutes: 15 },
     ] as const;
 
     for (const scope of scopes) {
@@ -26,6 +29,12 @@ describe("practice scope URL state", () => {
     expect(parsePracticeScopeUrl("?view=practice&practice=lesson&practiceCourse=c&practiceLesson=l&practiceMode=test"))
       .toBeNull();
     expect(parsePracticeScopeUrl("?view=practice&practice=unknown")).toBeNull();
+    expect(parsePracticeScopeUrl("?view=practice&practice=return&minutes=5")).toBeNull();
+    expect(parsePracticeScopeUrl("?view=practice&practice=return")).toBeNull();
+  });
+
+  it("removes a Return budget when navigating elsewhere", () => {
+    expect(removePracticeScopeFromUrl("?view=practice&practice=return&minutes=8&q=work")).toBe("?view=practice&q=work");
   });
 
   it("removes practice-only parameters when navigating elsewhere", () => {

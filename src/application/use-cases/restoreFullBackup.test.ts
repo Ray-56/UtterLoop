@@ -2,18 +2,20 @@ import { describe, expect, it, vi } from "vitest";
 import type {
   UtterLoopFullBackupV1,
   UtterLoopFullBackupV2,
+  UtterLoopFullBackupV3,
 } from "../../domain/backup/UtterLoopFullBackup";
+import { validateFullBackup } from "../../domain/backup/validateFullBackup";
 import { restoreFullBackup } from "./restoreFullBackup";
 
 describe("restoreFullBackup", () => {
   it("replaces local data once and returns a display-ready backup summary", async () => {
     const backup = validBackup();
-    const replaceAllData = vi.fn(async (_backup: UtterLoopFullBackupV2) => undefined);
+    const replaceAllData = vi.fn(async (_backup: UtterLoopFullBackupV3) => undefined);
 
     const summary = await restoreFullBackup({ replaceAllData }, backup);
 
     expect(replaceAllData).toHaveBeenCalledTimes(1);
-    expect(replaceAllData).toHaveBeenCalledWith(backup);
+    expect(replaceAllData).toHaveBeenCalledWith(validateFullBackup(backup));
     expect(summary).toEqual({
       exportedAt: "2026-07-31T10:00:00.000Z",
       counts: {
@@ -23,13 +25,14 @@ describe("restoreFullBackup", () => {
         reviewStates: 1,
         practiceLogEntries: 1,
         vocabularyEntries: 1,
+        personalSentences: 0, studioAttempts: 0, fluencyResults: 0,
       },
     });
   });
 
   it("normalizes a valid v1 backup to empty session evidence at the restore epoch", async () => {
     const legacy = legacyBackup();
-    const replaceAllData = vi.fn(async (_backup: UtterLoopFullBackupV2) => undefined);
+    const replaceAllData = vi.fn(async (_backup: UtterLoopFullBackupV3) => undefined);
 
     await restoreFullBackup(
       { replaceAllData },
@@ -38,8 +41,8 @@ describe("restoreFullBackup", () => {
     );
 
     expect(replaceAllData).toHaveBeenCalledWith(expect.objectContaining({
-      schemaVersion: 2,
-      databaseSchemaVersion: 6,
+      schemaVersion: 3,
+      databaseSchemaVersion: 7,
       learning: expect.objectContaining({
         measurementEpoch: "2026-08-01T12:00:00.000Z",
         practiceSessionEvidence: [],
@@ -50,9 +53,9 @@ describe("restoreFullBackup", () => {
   it("rejects an invalid backup before any replacement write", async () => {
     const invalidBackup: unknown = {
       ...validBackup(),
-      schemaVersion: 3,
+      schemaVersion: 99,
     };
-    const replaceAllData = vi.fn(async (_backup: UtterLoopFullBackupV2) => undefined);
+    const replaceAllData = vi.fn(async (_backup: UtterLoopFullBackupV3) => undefined);
 
     await expect(restoreFullBackup({ replaceAllData }, invalidBackup))
       .rejects.toThrow("schemaVersion");

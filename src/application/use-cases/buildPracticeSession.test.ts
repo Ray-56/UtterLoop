@@ -43,6 +43,32 @@ const course: Course = {
 const cards = [card("card-1"), card("card-2")];
 
 describe("buildPracticeSession", () => {
+  it("builds a bounded Return session with explicit per-card learning and Review semantics", () => {
+    const session = buildPracticeSession({
+      scope: { kind: "return", minutes: 8 }, courses: [course],
+      cards: [card("due"), card("weak"), card("new")],
+      reviewStates: [reviewState("due", 1, "2026-07-18T00:00:00.000Z"), reviewState("weak", 1, "2026-07-25T00:00:00.000Z")],
+      learningStates: [learningState("due", true), learningState("weak", true)],
+      weakCardIds: new Set(["weak"]), vocabularyEntries: [], now,
+    });
+    expect(session.items.map((item) => [item.card.id, item.queueReason, item.initialPhase]))
+      .toEqual([["due", "due-review", "review-recall"], ["weak", "voluntary-practice", "voluntary-practice"], ["new", "new-learning", "first-exposure"]]);
+    expect(session.items[0].scheduledReviewDueAt).toBe("2026-07-18T00:00:00.000Z");
+    expect(session.items[1].scheduledReviewDueAt).toBeUndefined();
+    expect(session.returnPlan).toMatchObject({ minutes: 8, itemLimit: 6, remainingDueCount: 0 });
+    expect(session.returnPlan?.items.every((item) => item.explanation.length)).toBe(true);
+  });
+
+  it("ends a Return plan clearly when no eligible due or optional cards remain", () => {
+    const session = buildPracticeSession({ scope: { kind: "return", minutes: 3 }, courses: [], cards: [], reviewStates: [], learningStates: [], vocabularyEntries: [], now });
+    expect(session).toMatchObject({ items: [], completed: true, emptyReason: "return-plan-empty" });
+  });
+
+  it("chooses bounded new learning in curriculum order rather than content-update storage order", () => {
+    const session = buildPracticeSession({ scope: { kind: "return", minutes: 8 }, courses: [course], cards: [cards[1], cards[0]], reviewStates: [], learningStates: [], vocabularyEntries: [], learningPaths: [{ id: "path", title: "Path", description: "Order", courseIds: [course.id] }], now });
+    expect(session.items.map((item) => item.card.id)).toEqual(["card-1"]);
+  });
+
   it.each([
     { label: "Lesson", scope: { kind: "lesson", courseId: course.id, lessonId: "lesson-1", mode: "learn" } as const },
     { label: "Review", scope: { kind: "review" } as const },

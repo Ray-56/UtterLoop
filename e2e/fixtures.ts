@@ -39,7 +39,8 @@ type SeedableUtterLoopStore =
   | "practiceSessionEvidence"
   | "sentenceCards"
   | "vocabularyEntries"
-  | "sentenceLearningStates";
+  | "sentenceLearningStates"
+  | "learningStudio";
 
 type ReadableUtterLoopStore = SeedableUtterLoopStore;
 
@@ -123,4 +124,27 @@ export async function readUtterLoopIndexedDbRecord(
       database.close();
     }
   }, { key, storeName });
+}
+
+/** Read the durable document and its small checkpoint sidecar in one snapshot. */
+export async function readLearningStudioIndexedDbDocument(page: Page): Promise<Record<string, unknown> | undefined> {
+  return page.evaluate(async () => {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("utterloop-courses");
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve(request.result);
+    });
+    try {
+      return await new Promise<Record<string, unknown> | undefined>((resolve, reject) => {
+        const transaction = database.transaction("learningStudio", "readonly");
+        const store = transaction.objectStore("learningStudio");
+        const local = store.get("local"); const state = store.get("state");
+        transaction.onerror = () => reject(transaction.error);
+        transaction.oncomplete = () => {
+          if (!local.result) { resolve(undefined); return; }
+          resolve(state.result ? { ...local.result, revision: state.result.revision, checkpoint: state.result.checkpoint } : local.result);
+        };
+      });
+    } finally { database.close(); }
+  });
 }

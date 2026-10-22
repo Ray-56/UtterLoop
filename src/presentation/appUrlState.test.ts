@@ -7,6 +7,18 @@ import {
 } from "./appUrlState";
 
 describe("application URL state", () => {
+  it("round-trips optional Studio routes without changing the default or leaking answers", () => {
+    for (const studio of ["home", "context", "family", "mission", "personal", "weakness", "fluency"] as const) {
+      const state = { ...DEFAULT_APP_URL_STATE, studio };
+      expect(parseAppUrlState(buildAppUrlState(state))).toEqual(state);
+    }
+    expect(parseAppUrlState("?view=practice&studio=family&answer=secret").studio).toBe("family");
+    expect(parseAppUrlState("?view=practice&studio=unknown")).not.toHaveProperty("studio");
+    expect(parseAppUrlState("?view=courses&studio=family")).not.toHaveProperty("studio");
+    expect(buildAppUrlState({ ...DEFAULT_APP_URL_STATE, view: "courses", studio: "family" })).toBe("?view=courses");
+    expect(buildAppUrlState(parseAppUrlState("?view=practice&studio=family&answer=secret"))).not.toContain("secret");
+    expect(buildAppUrlState(DEFAULT_APP_URL_STATE)).toBe("?view=practice");
+  });
   it("round-trips every canonical Practice scope", () => {
     const scopes = [
       { kind: "lesson", courseId: "starter foundations", lessonId: "lesson/1", mode: "learn" },
@@ -19,6 +31,9 @@ describe("application URL state", () => {
       { kind: "vocabulary", cardId: "sf-011", courseId: "starter" },
       { kind: "vocabulary" },
       { kind: "focused", cardId: "sf-011" },
+      { kind: "return", minutes: 3 },
+      { kind: "return", minutes: 8 },
+      { kind: "return", minutes: 15 },
     ] as const;
 
     for (const practiceScope of scopes) {
@@ -48,6 +63,14 @@ describe("application URL state", () => {
       view: "review",
       reviewCourseId: "starter-foundations",
     })).toBe("?view=review&reviewCourse=starter-foundations");
+  });
+
+  it("requires an explicit supported Return budget and keeps its URL target-free", () => {
+    expect(parseAppUrlState("?view=practice&scope=return&minutes=8").practiceScope).toEqual({ kind: "return", minutes: 8 });
+    for (const minutes of ["", "0", "5", "30", "3.0", "NaN"]) {
+      expect(parseAppUrlState(`?view=practice&scope=return&minutes=${minutes}`).practiceScopeWasInvalid).toBe(true);
+    }
+    expect(buildAppUrlState({ ...DEFAULT_APP_URL_STATE, practiceScope: { kind: "return", minutes: 3 } })).toBe("?view=practice&scope=return&minutes=3");
   });
 
   it("round-trips the catalog load window and rejects invalid limits", () => {

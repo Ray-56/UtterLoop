@@ -62,6 +62,9 @@ export function FullBackupSelectionSummary({
     ["ReviewState", summary.counts.reviewStates],
     ["Practice log", summary.counts.practiceLogEntries],
     ["Vocabulary", summary.counts.vocabularyEntries],
+    ["Personal sentences", summary.counts.personalSentences],
+    ["Studio attempts", summary.counts.studioAttempts],
+    ["Fluency passes", summary.counts.fluencyResults],
   ] as const;
 
   return (
@@ -125,7 +128,7 @@ export function PreparedFullBackupRestore({
 
       <ConfirmationDialog
         confirmLabel="Replace with backup"
-        description={`Replace all current Courses, learning progress, typed answers, Review state, Vocabulary, and preferences with ${selection.fileName}. This cannot be undone.`}
+        description={`Replace all current Courses, personal sentences, learning progress, typed answers, Review state, Vocabulary, Studio evidence, typing results, and preferences with ${selection.fileName}. Active drafts will be cleared. This cannot be undone.`}
         error={restoreError}
         id="full-backup-restore-confirmation"
         isPending={restorePending}
@@ -211,7 +214,8 @@ export function FullBackupControls({
         <h3 id="full-backup-heading">Full local backup</h3>
         <p className="muted-copy">
           This is separate from Course bundles. A full backup may contain your typed answers and
-          learning history, so keep the downloaded file stored privately.
+          learning history, personal sentences, and aggregate typing results, so keep the downloaded file stored privately.
+          Active Practice and Studio drafts are excluded.
         </p>
       </div>
 

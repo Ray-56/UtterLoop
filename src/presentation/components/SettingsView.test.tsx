@@ -152,7 +152,13 @@ describe("SettingsView", () => {
 
 function trainingController(): TrainingController {
   return {
+    learningStudioStore: { readLearningStudio: vi.fn(), saveLearningStudio: vi.fn() },
+    getAllPracticeLog: vi.fn(),
+    recordStudioCatalogSignal: vi.fn(),
     snapshot: null,
+    analyticsStatus: "deferred",
+    analyticsError: null,
+    loadAnalytics: vi.fn(),
     status: "ready",
     error: null,
     refresh: vi.fn(),

@@ -4,6 +4,8 @@ import {
   expectAppReady,
   openReadyApp,
   STARTER_LESSON_URL,
+  seedUtterLoopIndexedDb,
+  readUtterLoopIndexedDbRecord,
   test,
 } from "./fixtures";
 
@@ -118,4 +120,32 @@ smokeTest("recovers the active sentence and draft after reload", async ({ page }
     "Practice restored. Your draft and recall turn are ready.",
     { exact: true },
   )).toBeVisible();
+});
+
+smokeTest("runs an authored Studio recall without exposing its answer before checking", async ({ page }) => {
+  await openReadyApp(page, "/?view=practice&studio=family");
+  await page.getByRole("button", { name: "Learn 3 variants", exact: true }).first().click();
+  await expect(page.locator(".studio-answer")).toContainText("Could you send me the file?");
+  await page.getByRole("button", { name: "Start recall", exact: true }).click();
+  await expect(page.locator(".studio-answer")).toBeEmpty();
+  await expect(page.getByText("Could you send me the file?", { exact: true })).toHaveCount(0);
+  const input = page.getByLabel("Studio sentence input", { exact: true });
+  await input.focus(); await input.pressSequentially("Could you send me the file?"); await input.press("Enter");
+  await expect(page.locator(".studio-result")).toContainText("Expression recalled.");
+  const document = await readUtterLoopIndexedDbRecord(page, "learningStudio", "local");
+  expect(document?.attempts).toHaveLength(1);
+});
+
+smokeTest("loads optional typing and persists a separate pass", async ({ page }) => {
+  await openReadyApp(page, "/?view=settings");
+  const at = new Date(Date.now() - 86_400_000).toISOString();
+  await seedUtterLoopIndexedDb(page, { sentenceLearningStates: [{ cardId: "sf-001", introducedAt: at,
+    firstPassedAt: at, firstPassSource: "independent-recall" }] });
+  await page.goto("/?view=practice&studio=fluency"); await expectAppReady(page);
+  await page.getByRole("button", { name: "Start typing pass", exact: true }).first().click();
+  const input = page.getByLabel("Type the visible sentence for a Fluency Pass");
+  await input.focus(); await input.pressSequentially("Hello, my name is Emma."); await input.press("Enter");
+  await expect(page.locator(".fluency-result").getByRole("button", { name: "Return to learning", exact: true })).toBeEnabled();
+  const document = await readUtterLoopIndexedDbRecord(page, "learningStudio", "local");
+  expect(document?.fluencyResults).toHaveLength(1);
 });

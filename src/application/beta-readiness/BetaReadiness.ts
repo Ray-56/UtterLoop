@@ -424,7 +424,7 @@ function measureWeeklyRetainedIndependentSentences(input: BetaReadinessInput): R
 }
 
 function measureDueReviewCompletion(input: BetaReadinessInput): RateMeasure {
-  const reviewRounds = terminalRoundsInWindow(input).filter((session) => session.scope.kind === "review");
+  const reviewRounds = terminalRoundsInWindow(input).filter((session) => session.scope.kind === "review" || session.scope.kind === "return");
   const completeRounds = reviewRounds.filter((session) => isContextCompleteRound(session.round));
   const scheduled = completeRounds.flatMap((session) => (
     session.round.dueReviewScheduledOccurrenceIds.map((occurrenceId) => ({

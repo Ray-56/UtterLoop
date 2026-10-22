@@ -11,6 +11,7 @@ import {
 } from "../../../application/use-cases/getTrainingSnapshot";
 import type { UtterLoopFullBackupV2 } from "../../../domain/backup/UtterLoopFullBackup";
 import type { PracticeSessionEvidence } from "../../../domain/practice/PracticeSessionEvidence";
+import { createPracticeAttemptLogEntry } from "../../../domain/practice/PracticeLogEntry";
 
 const databaseNames: string[] = [];
 
@@ -19,6 +20,24 @@ afterEach(async () => {
 });
 
 describe("UtterLoopDatabase v6 persistence", () => {
+  it("reads only the requested turn's evidence through the turnId index", async () => {
+    const database = new UtterLoopDatabase(isolatedName("turn-evidence"));
+    await database.open();
+    const entries = Array.from({ length: 24 }, (_, index) => createPracticeAttemptLogEntry({
+      turnId: index < 2 ? "wanted-turn" : `unrelated-${index}`,
+      cardId: "sf-001", phase: "independent-recall", submissionIndex: index,
+      submittedAt: new Date(Date.UTC(2026, 9, 22, 0, index)).toISOString(),
+      answer: "Hello, my name is Emma.", outcome: "perfect", accuracy: 1,
+      evidence: { answerWasRevealed: false, hadEdits: false, audioPlayCount: 0, durationMs: 100,
+        supportLevelUsed: 0, supportKindsUsed: [], receivedCorrection: false },
+    }));
+    await database.practiceLog.bulkPut(entries);
+    const repository = new DexieTrainingRepository(database);
+    await expect(repository.listPracticeLogForTurn("wanted-turn")).resolves.toEqual(entries.slice(0, 2));
+    await expect(repository.listPracticeLogForTurn("missing-turn")).resolves.toEqual([]);
+    database.close();
+  });
+
   it("preserves the guided-learning migration while opening the latest schema", async () => {
     const name = isolatedName("upgrade");
     const v4 = new Dexie(name);
@@ -56,7 +75,7 @@ describe("UtterLoopDatabase v6 persistence", () => {
     const v5 = new UtterLoopDatabase(name);
     await v5.open();
 
-    expect(v5.verno).toBe(6);
+    expect(v5.verno).toBe(7);
     await expect(v5.sentenceLearningStates.get("card-1")).resolves.toEqual(learningState);
     await expect(v5.practiceLog.get(practiceEntry.id)).resolves.toEqual(practiceEntry);
     expect(v5.appPreferences.schema.primKey.name).toBe("id");
@@ -92,7 +111,7 @@ describe("UtterLoopDatabase v6 persistence", () => {
     );
     await v6.open();
 
-    expect(v6.verno).toBe(6);
+    expect(v6.verno).toBe(7);
     await expect(v6.practiceSessionEvidence.toArray()).resolves.toEqual([]);
     await expect(v6.appMetadata.get("device")).resolves.toEqual({
       id: "device",
@@ -171,6 +190,7 @@ describe("UtterLoopDatabase v6 persistence", () => {
     await expect(database.appMetadata.get("device")).resolves.toEqual({
       id: "device",
       measurementEpoch: "2026-07-01T00:00:00.000Z",
+      dataGeneration: 1,
     });
     await expect(database.practiceSessionCheckpoints.count()).resolves.toBe(0);
     database.close();
@@ -247,10 +267,11 @@ describe("UtterLoopDatabase v6 persistence", () => {
 
     await expect(repository.getMeasurementEpoch())
       .resolves.toBe("2026-08-02T00:00:00.000Z");
-    await repository.saveAppPreferences({ ...DEFAULT_APP_PREFERENCES });
-    await ensureDefaultCatalog(repository);
+    const reloadedRepository = new DexieTrainingRepository(database);
+    await reloadedRepository.saveAppPreferences({ ...DEFAULT_APP_PREFERENCES });
+    await ensureDefaultCatalog(reloadedRepository);
     const snapshot = await getTrainingSnapshot(
-      repository,
+      reloadedRepository,
       new Date("2026-08-02T00:00:00.000Z"),
     );
     expect(snapshot.betaReadiness?.activation.quickStartDisposition.coverage.measurementEpoch)
