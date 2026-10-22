@@ -1,5 +1,7 @@
 import { expect, test as base, type Page } from "@playwright/test";
 
+const startupDiagnostics = new WeakMap<Page, string[]>();
+
 /**
  * Playwright creates a fresh BrowserContext for every test, which gives each
  * case an empty IndexedDB. Clearing the two synchronous stores before the app
@@ -7,11 +9,19 @@ import { expect, test as base, type Page } from "@playwright/test";
  */
 export const test = base.extend({
   page: async ({ page }, use) => {
+    const diagnostics: string[] = [];
+    startupDiagnostics.set(page, diagnostics);
+    const record = (message: string) => { diagnostics.push(message); if (diagnostics.length > 20) diagnostics.shift(); };
+    page.on("pageerror", (error) => record(`pageerror: ${error.message}`));
+    page.on("console", (message) => { if (message.type() === "error") record(`console: ${message.text()}`); });
+    page.on("requestfailed", (request) => record(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText}`));
+    page.on("response", (response) => { if (response.status() >= 400) record(`response: ${response.status()} ${response.url()}`); });
     await page.addInitScript(() => {
       window.localStorage.clear();
       window.sessionStorage.clear();
     });
     await use(page);
+    startupDiagnostics.delete(page);
   },
 });
 
@@ -22,7 +32,17 @@ export const STARTER_LESSON_URL =
   + "&practiceLesson=sf-u1-l1&practiceMode=learn";
 
 export async function expectAppReady(page: Page): Promise<void> {
-  await expect(page.locator(".app-shell")).toHaveAttribute("data-storage-status", "ready");
+  try {
+    await expect(page.locator(".app-shell")).toHaveAttribute("data-storage-status", "ready");
+  } catch (error) {
+    const state = await page.evaluate(() => ({
+      url: location.href, readyState: document.readyState,
+      rootChildren: document.getElementById("root")?.childElementCount ?? null,
+      body: document.body?.innerText.slice(0, 2_000) ?? "",
+    })).catch((caught) => ({ unreadable: String(caught), url: page.url() }));
+    console.error("App readiness diagnostics:", JSON.stringify({ state, events: startupDiagnostics.get(page) ?? [] }));
+    throw error;
+  }
 }
 
 export async function openReadyApp(page: Page, path = "/"): Promise<void> {
