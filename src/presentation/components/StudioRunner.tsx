@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { ArrowLeft, BookmarkPlus, CheckCheck, ChevronLeft, CornerDownLeft, Eye, EyeOff, Pause, Play, RotateCcw, Volume2, VolumeX } from "lucide-react";
 import type { StudioCheckpoint, StudioExercise } from "../../domain/studio/LearningStudio";
 import { exerciseCard } from "../../domain/studio/studioRules";
@@ -50,12 +50,13 @@ export function StudioRunner({ initialCheckpoint, exercises, studio, onLeave, ke
     return () => window.clearTimeout(timer);
   }, [checkpoint, studio.run, finished]);
 
-  useEffect(() => {
-    if (checkpoint.phase === "recall" && !paused && !busy) {
+  // Restore the committed caret before new input; a later frame can select a newly typed character.
+  useLayoutEffect(() => {
+    if (checkpoint.phase === "recall" && !paused && !busy && !composing.current) {
       inputRef.current?.focus({ preventScroll: true });
       inputRef.current?.setSelectionRange(checkpoint.selectionStart ?? checkpoint.draft.length, checkpoint.selectionEnd ?? checkpoint.draft.length);
     }
-  }, [checkpoint.phase, checkpoint.index, paused, busy]);
+  }, [checkpoint.phase, checkpoint.index, checkpoint.draft, checkpoint.selectionStart, checkpoint.selectionEnd, paused, busy]);
 
   useEffect(() => {
     const persist = () => {
@@ -182,10 +183,6 @@ export function StudioRunner({ initialCheckpoint, exercises, studio, onLeave, ke
     update({ phase: "recall", draft: correction.answer, selectionStart: correction.firstErrorOffset,
       selectionEnd: correction.firstErrorOffset + (correction.answer ? 1 : 0), answerWasRevealed: true });
     setAnswerVisible(false); setNotice("Edit the cleared word slots, then check again. This is a supported retry.");
-    window.requestAnimationFrame(() => {
-      inputRef.current?.focus({ preventScroll: true });
-      inputRef.current?.setSelectionRange(correction.firstErrorOffset, correction.firstErrorOffset + (correction.answer ? 1 : 0));
-    });
   }
 
   async function skip() {
@@ -292,10 +289,8 @@ export function StudioRunner({ initialCheckpoint, exercises, studio, onLeave, ke
             let selectionEnd = event.target.selectionEnd;
             if (checkpoint.draft.includes(CORRECTION_SLOT_PLACEHOLDER) && !composing.current) {
               const stable = stabilizeCorrectionDraft(checkpoint.draft, draft, event.target.selectionEnd);
-              const normalized = stable.answer !== draft;
               draft = stable.answer;
               selectionStart = stable.selectionStart; selectionEnd = stable.selectionEnd;
-              if (normalized) window.requestAnimationFrame(() => inputRef.current?.setSelectionRange(stable.selectionStart, stable.selectionEnd));
             }
             sounds.triggerKeyFeedback(draft.length < checkpoint.draft.length ? { type: "delete" } : { type: "append", value: draft.endsWith(" ") ? " " : draft.at(-1) ?? "" });
             update({ draft, selectionStart, selectionEnd });

@@ -15,6 +15,38 @@ test("a failed Studio check clears only mismatches and keeps its retry supported
   await expect(page.locator(".studio-result")).toContainText("Supported or repeated");
 });
 
+test("a delayed retry frame cannot replace characters already typed into a cleared slot", async ({ page }) => {
+  await openReadyApp(page, "/?view=practice&studio=family");
+  await page.getByRole("button", { name: "Learn 3 variants", exact: true }).first().click();
+  await page.getByRole("button", { name: "Start recall", exact: true }).click();
+  const input = page.getByLabel("Studio sentence input", { exact: true });
+  await expect(input).toBeEditable();
+  await input.pressSequentially("Could you send me a link?"); await input.press("Enter");
+  await expect(page.locator(".studio-result")).toContainText("Check the reference");
+  await page.evaluate(() => {
+    const request = window.requestAnimationFrame.bind(window);
+    const cancel = window.cancelAnimationFrame.bind(window);
+    const pending = new Map<number, FrameRequestCallback>();
+    let id = 0;
+    window.requestAnimationFrame = (callback) => { pending.set(--id, callback); return id; };
+    window.cancelAnimationFrame = (frame) => { if (!pending.delete(frame)) cancel(frame); };
+    window.addEventListener("release-studio-frames", () => {
+      window.requestAnimationFrame = request; window.cancelAnimationFrame = cancel;
+      for (const callback of pending.values()) callback(performance.now());
+      pending.clear();
+    }, { once: true });
+  });
+  await page.locator(".studio-primary-key").click();
+  await expect(input).toBeEditable();
+  await input.pressSequentially("t");
+  await page.evaluate(() => window.dispatchEvent(new Event("release-studio-frames")));
+  await input.pressSequentially("he");
+  await expect(input).toHaveValue("could you send me the \u2063");
+  await input.press("Space"); await input.pressSequentially("file"); await input.press("Enter");
+  await expect(page.locator(".studio-result")).toContainText("Expression recalled.");
+  await expect(page.locator(".studio-result")).toContainText("Supported or repeated");
+});
+
 test("Studio retains a visible direct-input stage and five ordered hints across themes and viewports", async ({ page }, testInfo) => {
   await openReadyApp(page, "/?view=settings");
   await seedUtterLoopIndexedDb(page, { appPreferences: [{ id: "device", theme: "light", speechVoiceUri: null,
