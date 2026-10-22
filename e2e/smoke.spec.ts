@@ -17,11 +17,22 @@ async function enterStarterRecall(page: Page): Promise<void> {
   await expect(page.getByLabel("First exposure")).toHaveCount(0);
 }
 
-function observeBrowserDiagnostics(page: Page): string[] {
+function observeBrowserDiagnostics(page: Page) {
   const diagnostics: string[] = [];
+  const pendingConsoleReads: Promise<void>[] = [];
   page.on("pageerror", (error) => diagnostics.push(`pageerror: ${error.message}`));
   page.on("console", (message) => {
-    if (message.type() === "error") diagnostics.push(`console: ${message.text()}`);
+    if (message.type() !== "error") return;
+    const index = diagnostics.push(`console: ${message.text()} location=${JSON.stringify(message.location())}`) - 1;
+    pendingConsoleReads.push(Promise.all(message.args().map(async (argument) => {
+      try {
+        return await argument.evaluate((value) => {
+          if (typeof value === "string") return value;
+          if (value instanceof Error) return value.stack ?? value.message;
+          try { return JSON.stringify(value) ?? String(value); } catch { return String(value); }
+        });
+      } catch { return "<console argument unavailable>"; }
+    })).then((arguments_) => { diagnostics[index] += ` args=${JSON.stringify(arguments_)}`; }));
   });
   page.on("requestfailed", (request) => {
     diagnostics.push(`requestfailed: ${request.method()} ${request.url()}`);
@@ -31,13 +42,20 @@ function observeBrowserDiagnostics(page: Page): string[] {
       diagnostics.push(`response: ${response.status()} ${response.url()}`);
     }
   });
-  return diagnostics;
+  return { diagnostics, pendingConsoleReads };
 }
 
 const smokeTest = test.extend<{ browserDiagnostics: string[] }>({
   browserDiagnostics: [async ({ page }, use) => {
-    const diagnostics = observeBrowserDiagnostics(page);
+    const { diagnostics, pendingConsoleReads } = observeBrowserDiagnostics(page);
+    await page.addInitScript(() => {
+      const original = console.error;
+      console.error = (...arguments_: unknown[]) => original.call(console, ...arguments_, {
+        browserStack: new Error("Browser console error").stack,
+      });
+    });
     await use(diagnostics);
+    await Promise.all(pendingConsoleReads);
     expect(diagnostics).toEqual([]);
   }, { auto: true }],
 });
