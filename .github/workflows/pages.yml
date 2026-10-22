@@ -45,14 +45,14 @@ jobs:
         run: npm run build
 
       - name: Upload browser failure evidence
-        if: ${{ failure() }}
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
           name: browser-failure-evidence
           path: |
-            node_modules/.cache/playwright-results/**/test-failed-*.png
-            node_modules/.cache/playwright-results/**/error-context.md
-            node_modules/.cache/playwright-results/**/trace.zip
+            node_modules/.cache/playwright*-results/**/test-failed-*.png
+            node_modules/.cache/playwright*-results/**/error-context.md
+            node_modules/.cache/playwright*-results/**/trace.zip
           if-no-files-found: ignore
           retention-days: 7
 
