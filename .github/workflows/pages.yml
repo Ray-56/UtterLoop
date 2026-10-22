@@ -16,7 +16,7 @@ jobs:
     container:
       # Keep this version aligned with @playwright/test in package.json.
       image: mcr.microsoft.com/playwright:v1.62.1-noble
-      options: --init --ipc=host
+      options: --user 1001 --init --ipc=host
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -55,6 +55,7 @@ jobs:
             node_modules/.cache/playwright*-results/**/error-context.md
             node_modules/.cache/playwright*-results/**/trace.zip
           if-no-files-found: ignore
+          include-hidden-files: true
           retention-days: 7
 
       - name: Upload artifact
